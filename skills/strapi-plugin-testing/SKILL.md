@@ -90,7 +90,7 @@ architecture checker with its `strapi-plugin` and `strapi-admin` presets, config
 `.claude/fullstack-standards.json`. With the fullstack-standards plugin installed they
 run as hooks while you work (an edit that breaks a rule is denied); the plugin's
 `test:rules` script runs the same checks in CI
-(`npx --yes github:ayhid/fullstack-standards#<tag> --all .`). Run it before finishing.
+(`npx --yes github:ayhid/fullstack-standards#v1.0.0-beta.2 --all .`). Run it before finishing.
 It enforces:
 
 - **Domain is framework-free** (`domain-framework-free`) — `server/src/domain/**` never

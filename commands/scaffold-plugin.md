@@ -34,7 +34,7 @@ Scaffold a new Strapi v5 plugin named `$1`. Follow the strapi-plugin-dev skill.
      }
      ```
      Prefix both roots with the plugin's path if it doesn't sit at the repo root (e.g. `packages/<name>`, `src/plugins/<name>`).
-   - Add `"test:rules": "fullstack-standards --all ."` to `scripts` and `"fullstack-standards": "github:ayhid/fullstack-standards#<tag>"` to `devDependencies` (pin the latest release tag), so CI runs the same checks. Keep `typescript` ^5 in `devDependencies`: the checker loads it from the plugin.
+   - Add `"test:rules": "fullstack-standards --all ."` to `scripts` and `"fullstack-standards": "github:ayhid/fullstack-standards#v1.0.0-beta.2"` to `devDependencies` (pin the latest release tag), so CI runs the same checks. Keep `typescript` ^5 in `devDependencies`: the checker loads it from the plugin.
    - Offer to write the project profile into `AGENTS.md` with the `fullstack-standards:project-profile` skill.
 
 4. **Run `npm install`** in the new plugin directory.
