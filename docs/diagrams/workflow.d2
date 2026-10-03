@@ -1,0 +1,22 @@
+vars: {d2-config: {sketch: true; theme-id: 0; dark-theme-id: 200; layout-engine: dagre; pad: 24}}
+...@palette
+direction: down
+
+ask: "You ask" {class: slate}
+skills: "Strapi context added,\nmatching skills load" {class: blue}
+edit: Agent edits {class: pink}
+rule: "Breaks\na rule?" {shape: diamond; class: orange}
+denied: "Edit denied,\nwith the fix" {class: red}
+warn: "DS / v5 warnings\nafter the edit" {class: yellow}
+stop: "Agent\nstops" {shape: diamond; class: orange}
+done: Done {class: green}
+ci: "CI: test:rules" {class: teal}
+
+ask -> skills -> edit -> rule {class: arrow}
+rule -> warn: no {class: arrow}
+rule -> denied: yes {class: arrow}
+denied -> edit: rewrite {class: arrow}
+warn -> stop {class: arrow}
+stop -> edit: missing tests {class: arrow}
+stop -> done: ok {class: arrow}
+done -> ci {class: arrow}

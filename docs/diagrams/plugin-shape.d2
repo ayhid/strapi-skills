@@ -1,0 +1,31 @@
+vars: {d2-config: {sketch: true; theme-id: 0; dark-theme-id: 200; layout-engine: dagre; pad: 24}}
+...@palette
+direction: down
+
+admin: "admin/src: one way to the server" {
+  class: frame-blue
+  grid-columns: 4
+  horizontal-gap: 70
+  component: Component {class: blue}
+  hook: "Feature hook\n(TanStack Query)" {class: violet}
+  service: Service {class: pink}
+  fetch: "getFetchClient()" {class: orange}
+  component -> hook -> service -> fetch {class: arrow}
+}
+
+server: "server/src: framework at the edges, logic in the centre" {
+  class: frame-green
+  grid-columns: 3
+  horizontal-gap: 70
+  vertical-gap: 50
+  edge: "Route · controller\ndocument middleware" {class: teal}
+  domain: "Domain\n(pure rules)" {class: green}
+  port: Port {shape: hexagon; class: yellow}
+  gap1: "" {style: {opacity: 0}}
+  gap2: "" {style: {opacity: 0}}
+  adapter: "Adapter\nstrapi.documents · SDK" {class: slate}
+  edge -> domain -> port {class: arrow}
+  adapter -> port: implements {class: arrow; style.stroke-dash: 4}
+}
+
+admin -> server: "HTTP · plugin admin routes" {class: arrow}

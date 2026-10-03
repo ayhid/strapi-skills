@@ -50,26 +50,7 @@ catch it when it doesn't:
 
 ## What is in the box
 
-```mermaid
-flowchart TB
-    subgraph SS["strapi-skills: how to build a Strapi plugin"]
-        direction TB
-        S1["📘 Skills<br/>plugin-dev<br/>ui-design<br/>plugin-testing"]
-        S2["🔍 Agents<br/>strapi-reviewer<br/>strapi-ui-reviewer"]
-        S3["⚡ Commands<br/>scaffold · add<br/>verify · audit"]
-        S4["🪝 Hooks<br/>prompt context<br/>edit checks"]
-    end
-    subgraph FS["fullstack-standards: shared rules, enforced"]
-        direction TB
-        F1["📗 Skills<br/>data-layer<br/>fullstack-testing<br/>project-profile"]
-        F2["🛡️ Architecture checker<br/>strapi-admin preset<br/>strapi-plugin preset"]
-    end
-    SS ==>|"defers to: admin data layer · tests · rules"| FS
-    classDef box fill:#ffffff,stroke:#8a99ad,color:#1f2937
-    class S1,S2,S3,S4,F1,F2 box
-    style SS fill:#eef4fb,stroke:#3a6ea5
-    style FS fill:#eef8f1,stroke:#2e8b57
-```
+<p align="center"><img src="docs/diagrams/in-the-box.svg" alt="strapi-skills (skills, agents, commands, hooks) defers to fullstack-standards (skills and the architecture checker) for the admin data layer, its tests and the rules" width="720"></p>
 
 | Skill | Loads when you… | Teaches |
 |---|---|---|
@@ -143,25 +124,7 @@ Example prompts that pull in the right skill:
 
 Every step of a session gets a check, and CI repeats the deterministic ones:
 
-```mermaid
-flowchart LR
-    P["💬 You ask"] --> C["🧭 Strapi context<br/>added to the prompt"]
-    C --> K["📘 Matching skills<br/>load"]
-    K --> E["✏️ Agent edits"]
-    E --> G{"🛡️ Breaks a rule?"}
-    G -- yes --> D["⛔ Edit denied<br/>with the fix"]
-    D --> E
-    G -- no --> W["⚠️ DS / v5 warnings<br/>after the edit"]
-    W --> S{"🏁 Agent stops"}
-    S -- "component or service<br/>without a test" --> E
-    S -- ok --> R["✅ Done"]
-    R --> CI["🔁 CI: test:rules"]
-    classDef box fill:#ffffff,stroke:#8a99ad,color:#1f2937
-    class P,C,K,E,W box
-    style D fill:#f7dcdc,stroke:#b03a3a
-    style R fill:#d9f2e3,stroke:#2e8b57
-    style CI fill:#dbe9f7,stroke:#3a6ea5
-```
+<p align="center"><img src="docs/diagrams/workflow.svg" alt="You ask; Strapi context is added and skills load; the agent edits; an edit that breaks a rule is denied with the fix; otherwise warnings follow; the agent cannot stop with missing tests; then done, and CI runs test:rules" width="420"></p>
 
 | Moment | What runs | From |
 |---|---|---|
@@ -191,24 +154,7 @@ Existing debt can be recorded once as a baseline, which can only shrink.
 
 ## How a plugin is shaped
 
-```mermaid
-flowchart TB
-    subgraph ADMIN["admin/src: one way to the server"]
-        direction LR
-        CMP["Component"] --> HK["Feature hook<br/>TanStack Query"] --> SVC["Service"] --> GFC["getFetchClient()"]
-    end
-    subgraph SERVER["server/src: framework at the edges, logic in the centre"]
-        direction LR
-        RT["Route · controller<br/>document middleware"] --> DOM["Domain<br/>pure rules"] --> PORT[["Port"]]
-        ADP["Adapter<br/>strapi.documents · SDK"] -. implements .-> PORT
-    end
-    ADMIN ==>|"HTTP: plugin admin routes"| SERVER
-    classDef box fill:#ffffff,stroke:#8a99ad,color:#1f2937
-    class CMP,HK,SVC,GFC,RT,PORT,ADP box
-    style ADMIN fill:#eef4fb,stroke:#3a6ea5
-    style SERVER fill:#eef8f1,stroke:#2e8b57
-    style DOM fill:#d9f2e3,stroke:#2e8b57,color:#1f2937
-```
+<p align="center"><img src="docs/diagrams/plugin-shape.svg" alt="admin/src: component to feature hook to service to getFetchClient, over HTTP to server/src: route, controller or middleware to domain to port, with an adapter implementing the port" width="760"></p>
 
 - **Admin:** each layer calls only the next one. Query keys come from one factory, and
   every tree (plugin pages *and* Content Manager panels) shares one `queryClient`.
@@ -224,23 +170,7 @@ flowchart TB
 
 Three questions decide where each test goes:
 
-```mermaid
-flowchart LR
-    A["A behaviour"] --> Q1{"Mine or<br/>Strapi's?"}
-    Q1 -- Strapi's --> N["No test<br/>test your use of it"]
-    Q1 -- mine --> Q2{"Needs Strapi<br/>to be true?"}
-    Q2 -- no --> U["🟢 Unit"]
-    Q2 -- yes --> I["🔵 Integration<br/>real Strapi"]
-    U --> Q3{"Someone<br/>depends on it?"}
-    I --> Q3
-    Q3 -- yes --> C["🟡 Contract"]
-    Q3 -- no --> D["Done"]
-    classDef box fill:#ffffff,stroke:#8a99ad,color:#1f2937
-    class A,N,D box
-    style U fill:#d9f2e3,stroke:#2e8b57
-    style I fill:#dbe9f7,stroke:#3a6ea5
-    style C fill:#fbefd5,stroke:#c58b12
-```
+<p align="center"><img src="docs/diagrams/three-questions.svg" alt="Mine or Strapi's? Strapi's: no test. Mine: needs Strapi to be true? No: unit; yes: integration. Someone depends on it? Yes: contract; no: done" width="900"></p>
 
 If question 2 is "yes" for most of a feature, the logic is in the wrong place: extract it
 first.
@@ -302,10 +232,15 @@ agents/                             # strapi-reviewer, strapi-ui-reviewer
 commands/                           # scaffold-plugin, add-content-type, add-cm-panel, verify, ui-component, ui-audit
 hooks/hooks.json                    # prompt context and edit-time checks
 scripts/                            # the hook scripts
+docs/diagrams/                      # D2 sources and rendered SVGs (render.sh)
 evals/strapi-plugin-testing/        # eval prompts and input fixtures
 ```
 
 Each `SKILL.md` stays short; reference files open only when the task needs them.
+
+The diagrams are [D2](https://d2lang.com) sources in `docs/diagrams/`, drawn in sketch style
+with a light and a dark theme in each SVG. After editing one, run `docs/diagrams/render.sh`
+(`--check` fails when an SVG is out of date).
 </details>
 
 ## Status

@@ -1,0 +1,23 @@
+vars: {d2-config: {sketch: true; theme-id: 0; dark-theme-id: 200; layout-engine: elk; pad: 24}}
+...@palette
+direction: down
+
+ss: "strapi-skills: how to build a Strapi plugin" {
+  class: frame-blue
+  grid-columns: 4
+  grid-gap: 24
+  skills: "Skills\n\nplugin-dev\nui-design\nplugin-testing" {class: blue}
+  agents: "Agents\n\nstrapi-reviewer\nstrapi-ui-reviewer" {class: violet}
+  commands: "Commands\n\nscaffold · add\nverify · audit" {class: pink}
+  hooks: "Hooks\n\nprompt context\nedit checks" {class: orange}
+}
+
+fs: "fullstack-standards: shared rules, enforced" {
+  class: frame-green
+  grid-columns: 2
+  grid-gap: 24
+  skills: "Skills\n\ndata-layer\nfullstack-testing\nproject-profile" {class: green}
+  checker: "Architecture checker\n\nstrapi-admin preset\nstrapi-plugin preset" {class: teal}
+}
+
+ss -> fs: "defers to: admin data layer · tests · rules" {class: arrow}

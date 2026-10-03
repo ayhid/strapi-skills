@@ -1,0 +1,23 @@
+vars: {d2-config: {sketch: true; theme-id: 0; dark-theme-id: 200; layout-engine: dagre; pad: 24}}
+...@palette
+direction: right
+
+behaviour: A behaviour {class: slate}
+q1: "Mine or\nStrapi's?" {shape: diamond; class: violet}
+none: "No test:\ntest your use of it" {class: slate}
+q2: "Needs Strapi\nto be true?" {shape: diamond; class: violet}
+unit: Unit {class: green}
+integration: "Integration\n(real Strapi)" {class: blue}
+q3: "Someone\ndepends on it?" {shape: diamond; class: violet}
+contract: Contract {class: yellow}
+done: Done {class: slate}
+
+behaviour -> q1 {class: arrow}
+q1 -> none: "Strapi's" {class: arrow}
+q1 -> q2: mine {class: arrow}
+q2 -> unit: "no" {class: arrow}
+q2 -> integration: "yes" {class: arrow}
+unit -> q3 {class: arrow}
+integration -> q3 {class: arrow}
+q3 -> contract: "yes" {class: arrow}
+q3 -> done: "no" {class: arrow}
