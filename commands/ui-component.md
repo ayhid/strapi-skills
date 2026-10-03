@@ -26,11 +26,11 @@ Scaffold an admin UI component of type `$1` (one of: `settings`, `table`, `form`
    - `Field.Root` for every input
    - `Modal.Root`/`Modal.Content`/`Modal.Header`/`Modal.Body`/`Modal.Footer` (NEVER `ModalLayout`)
    - `react-hook-form` + `zod` for forms
-   - `@tanstack/react-query` v5 + `useFetchClient` for data
+   - `@tanstack/react-query` v5 + `useFetchClient` for data, under the plugin's own `QueryClientProvider` (Strapi admin doesn't provide one)
    - `useNotification` for feedback
    - `useRBAC` if the page should be permission-gated
 
-5. **If wiring is needed** (e.g., menu link or route registration), edit `admin/src/index.tsx` to register the new page/component.
+5. **If wiring is needed** (e.g., menu link or route registration), edit `admin/src/index.ts` (`addMenuLink`, `addSettingsLink`, or `widgets.register` for a homepage widget) to register the new page/component.
 
 6. **Report** the file created and any registration edits.
 

@@ -15,11 +15,11 @@ Scaffold a new Strapi v5 plugin named `$1`. Follow the strapi-plugin-dev skill.
    npx @strapi/sdk-plugin@latest init $1
    ```
 
-2. **Verify the generated structure** matches the canonical layout (see strapi-plugin-dev SKILL.md). It should contain `server/src/`, `admin/src/`, `strapi-server.js`, `strapi-admin.js`, `package.json` with `strapi.kind: "plugin"`.
+2. **Verify the generated structure** matches the canonical layout (see strapi-plugin-dev SKILL.md). It should contain `server/src/index.ts`, `admin/src/index.ts`, and a `package.json` with `strapi.kind: "plugin"` whose `exports` map `./strapi-server` and `./strapi-admin` to `dist/` (no root `strapi-server.js`/`strapi-admin.js` files in current `@strapi/sdk-plugin`).
 
 3. **Layer the opinionated defaults** on top:
-   - Add dependencies to `package.json`: `@hookform/resolvers`, `@strapi/design-system: ^2.0.0`, `@strapi/icons: ^2.0.0`, `@tanstack/react-query: ^5`, `react-hook-form: ^7`, `react-intl: ^7`, `zod: ^3`.
-   - Drop `react: ^17` from peerDependencies; keep `^18.0.0` only.
+   - Add dependencies to `package.json`: `@hookform/resolvers: ^5`, `@tanstack/react-query: ^5`, `react-hook-form: ^7`, `zod: ^4`. Keep `@strapi/design-system`/`@strapi/icons` at `^2.0.0` and `react-intl` as the template's `^6` peer (Strapi admin ships react-intl 6; a separate v7 copy won't share its `IntlProvider`).
+   - Keep `react`/`react-dom` peers at `^18.0.0` (Strapi 5 admin runs React 18).
    - Create `admin/src/pluginId.ts` exporting the plugin id constant.
    - Create `admin/src/components/Initializer.tsx` (standard `setPlugin` pattern).
    - Split `server/src/routes/` into `admin/` and `content-api/` subdirectories.

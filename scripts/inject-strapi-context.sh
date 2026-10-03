@@ -16,7 +16,7 @@ if [[ -f "$cwd/package.json" ]] && grep -qE '"kind"[[:space:]]*:[[:space:]]*"plu
   is_strapi_plugin=1
 fi
 
-# Heuristic 2: classic plugin entry files at the root
+# Heuristic 2: root entry files (older plugins; current sdk-plugin templates rely on package.json exports)
 if [[ -f "$cwd/strapi-server.js" || -f "$cwd/strapi-admin.js" ]]; then
   is_strapi_plugin=1
 fi
@@ -33,6 +33,7 @@ fi
 cat <<'EOF'
 [strapi-plugin-dev] Detected Strapi v5 plugin context. When editing:
 • Server: use `strapi.documents(uid)` (Document Service API), not `entityService` or `query`.
-• Admin: use `@strapi/design-system` v2 compound components, `react-hook-form` + `zod`, and `@tanstack/react-query` v5.
+• Admin: use `@strapi/design-system` v2 compound components, `react-hook-form` + `zod`, and `@tanstack/react-query` v5 under the plugin's own `QueryClientProvider` (Strapi admin doesn't provide one).
+• Targets Strapi 5.x (latest 5.56): Node >=20 <=26, React 18, DS 2.2.x.
 • Load the strapi-plugin-dev and strapi-ui-design skills as needed for full patterns.
 EOF

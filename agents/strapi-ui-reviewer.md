@@ -23,7 +23,12 @@ Only review files under `admin/src/` of a Strapi v5 plugin. Skip server-side or 
 - [ ] `Layouts` and `Page` are imported from `@strapi/strapi/admin`, NOT from `@strapi/design-system` (which does not export them).
 - [ ] No deprecated props: `Tooltip` `description` (→ `label`), `Th` `action` (→ children).
 - [ ] `NumberInput` uses `onValueChange(value: number | undefined)`, not `onChange`.
-- [ ] Imports come from the root `@strapi/design-system` package, NOT path imports.
+- [ ] Imports come from the root `@strapi/design-system` package, NOT path imports (exception: illustrations like `EmptyDocuments` come from `@strapi/icons/symbols`).
+- [ ] No symbols that don't exist in DS 2.2.x: `Select`/`Option` (→ `SingleSelect`/`SingleSelectOption`), icons `ExclamationMarkCircle`/`Refresh`/`Puzzle` (→ `WarningCircle`/`ArrowClockwise`/`PuzzlePiece`).
+- [ ] Required props present: `Alert closeLabel`, `Toggle onLabel`/`offLabel` (and `onChange`, not `onCheckedChange` — that's `Switch`), `Searchbar name`/`onClear`/`clearLabel`.
+- [ ] No `asChild` on `Dialog`/`Modal`/`Popover` `Trigger`/`Cancel`/`Action`/`Close` (they always render as their child).
+- [ ] `Checkbox` tri-state uses `checked="indeterminate"`, not an `indeterminate` prop.
+- [ ] Spacing props use theme indexes (`padding={4}` = 16px, `8` = 40px), not pixel math.
 
 ### Page shell
 
@@ -36,8 +41,8 @@ Only review files under `admin/src/` of a Strapi v5 plugin. Skip server-side or 
 
 - [ ] Every standalone input is wrapped in `Field.Root`.
 - [ ] `Field.Label` is set (label is not just a prop).
-- [ ] Complex inputs include `Field.Hint`.
-- [ ] Validation errors are surfaced via `Field.Error`.
+- [ ] Complex inputs pass `hint` to `Field.Root` and render `<Field.Hint />` (Hint/Error ignore children).
+- [ ] Validation errors are passed as `error` to `Field.Root` and rendered with `<Field.Error />`.
 - [ ] Forms use `react-hook-form` + `zod` (not Formik/Yup).
 
 ### Modals & Dialogs
@@ -48,7 +53,7 @@ Only review files under `admin/src/` of a Strapi v5 plugin. Skip server-side or 
 
 ### Tables
 
-- [ ] Use `Table` + `Thead`/`Tbody`/`Tr`/`Td`/`Th` compound API.
+- [ ] Use DS `Table` (with `colCount`/`rowCount`) + `Thead`/`Tbody`/`Tr`/`Td`/`Th`, or the admin `Table.*` from `@strapi/strapi/admin`.
 - [ ] Row actions use `IconButton` with a `label` prop (a11y).
 - [ ] Empty states use `EmptyStateLayout`.
 
@@ -60,7 +65,9 @@ Only review files under `admin/src/` of a Strapi v5 plugin. Skip server-side or 
 
 ### Accessibility
 
-- [ ] All `IconButton` instances have a `label` prop.
+- [ ] All `IconButton` instances have a `label` prop (it is the accessible name and the tooltip — no extra `aria-label` or wrapping `Tooltip`).
+- [ ] Screen-reader announcements use `useNotifyAT()`, not a plugin-mounted `LiveRegions`.
+- [ ] Colours come from theme tokens so dark mode works.
 - [ ] All inputs have a label (via `Field.Label`).
 - [ ] All images/avatars have `alt` text.
 - [ ] Keyboard navigation works (flag custom click handlers without `onKeyDown`).
@@ -69,7 +76,7 @@ Only review files under `admin/src/` of a Strapi v5 plugin. Skip server-side or 
 
 - [ ] Uses `@tanstack/react-query` v5.
 - [ ] Uses `useFetchClient` (NOT raw `fetch`/`axios`).
-- [ ] CM-injected panels wrap their own `QueryClientProvider`.
+- [ ] Every tree using TanStack Query (pages and CM-injected panels) wraps the plugin's own `QueryClientProvider` — Strapi admin provides none.
 
 ## Output Format
 
@@ -92,7 +99,7 @@ Only review files under `admin/src/` of a Strapi v5 plugin. Skip server-side or 
 ```
 
 When uncertain about a component's real props or sub-components, consult the
-bundled `component-catalog.md` (a source-derived API reference for DS v2.2.1)
+bundled `component-catalog.md` (a source-derived API reference for DS v2.2.4)
 before flagging — it lists exact prop names, compound slots, and the symbols
 that do not exist in v2.
 

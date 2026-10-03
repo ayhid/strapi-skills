@@ -3,6 +3,9 @@
 A Claude Code plugin bundle for building **Strapi v5 plugins** with agents: how to write
 the plugin, how to build its admin UI, and how to test it at the right level.
 
+Checked against Strapi 5.56 (`@strapi/strapi` 5.56.0, Node `>=20 <=26`, React 18), Design System and icons 2.2.4,
+and `@strapi/sdk-plugin` 6.1.1.
+
 | Skill | What it does |
 |---|---|
 | `strapi-plugin-dev` | Plugin development: Document Service API, factory patterns, routes and RBAC, admin extensions, RHF + Zod, TanStack Query v5 |

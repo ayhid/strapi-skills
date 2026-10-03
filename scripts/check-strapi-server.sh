@@ -17,7 +17,11 @@ if grep -qE '\bstrapi\.entityService\b' "$file_path"; then
 fi
 
 if grep -qE '\bstrapi\.query\b' "$file_path"; then
-  issues+=("• \`strapi.query()\` is a low-level escape hatch — prefer \`strapi.documents()\` for CRUD")
+  issues+=("• \`strapi.query()\` is deprecated — prefer \`strapi.documents()\` for CRUD (\`strapi.db.query(uid)\` only as a low-level escape hatch)")
+fi
+
+if grep -qE "\{[[:space:]]*results[[:space:]]*,[[:space:]]*pagination[[:space:]]*\}[[:space:]]*=[[:space:]]*await[[:space:]]+strapi\.documents" "$file_path"; then
+  issues+=("• \`strapi.documents(uid).findMany()\` returns a plain array, not \`{ results, pagination }\` — use \`count()\` for totals")
 fi
 
 if grep -qE "from ['\"]formik['\"]" "$file_path"; then

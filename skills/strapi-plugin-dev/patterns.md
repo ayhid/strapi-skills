@@ -1900,6 +1900,7 @@ export default {
 
 ```tsx
 // admin/src/index.ts
+// Type-only import: add @strapi/content-manager to devDependencies
 import type { DocumentActionComponent } from '@strapi/content-manager/strapi-admin';
 
 const ExportAction: DocumentActionComponent = ({ model, documentId }) => ({

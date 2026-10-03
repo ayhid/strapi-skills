@@ -13,7 +13,7 @@ issues=()
 
 # Native HTML interactive elements
 if grep -qE '<(button|input|select|textarea)(\s|>)' "$file_path"; then
-  issues+=("• Native HTML \`<button>/<input>/<select>/<textarea>\` — use Strapi DS v2 components (Button, TextInput, Select, Textarea)")
+  issues+=("• Native HTML \`<button>/<input>/<select>/<textarea>\` — use Strapi DS v2 components (Button, TextInput, SingleSelect, Textarea)")
 fi
 
 # styled-components
@@ -36,7 +36,7 @@ if grep -qE "['\"]#[0-9a-fA-F]{3,8}['\"]" "$file_path"; then
   issues+=("• Hardcoded hex colors — use DS theme colors via props")
 fi
 
-# Removed v4 Modal* components (not just deprecated — absent from DS v2.2.1 source)
+# Removed v4 Modal* components (not just deprecated — absent from DS v2.2.4 source)
 if grep -qE '\b(ModalLayout|ModalHeader|ModalBody|ModalFooter)\b' "$file_path"; then
   issues+=("• \`ModalLayout/ModalHeader/ModalBody/ModalFooter\` do NOT exist in DS v2 — use the \`Modal.Root/Content/Header/Title/Body/Footer\` compound API")
 fi
@@ -46,12 +46,12 @@ if grep -qE "import[^;]*\b(Layouts|Page)\b[^;]*from ['\"]@strapi/design-system['
   issues+=("• \`Layouts\`/\`Page\` are not exported by \`@strapi/design-system\` — import them from \`@strapi/strapi/admin\`")
 fi
 
-# Deprecated Tooltip `description` prop (v2.2.1: @deprecated, use label)
+# Deprecated Tooltip `description` prop (v2.2.4: @deprecated, use label)
 if grep -qE '<Tooltip[^>]*\bdescription=' "$file_path"; then
   issues+=("• \`Tooltip\` \`description\` prop is deprecated in DS v2 — use \`label\` instead")
 fi
 
-# Deprecated Th `action` prop (v2.2.1: @deprecated, pass as children)
+# Deprecated Th `action` prop (v2.2.4: @deprecated, pass as children)
 if grep -qE '<Th[^>]*\baction=' "$file_path"; then
   issues+=("• \`Th\` \`action\` prop is deprecated in DS v2 — pass everything as children instead")
 fi
@@ -59,6 +59,31 @@ fi
 # NumberInput uses onValueChange, not onChange
 if grep -qE '<NumberInput[^>]*\bonChange=' "$file_path"; then
   issues+=("• \`NumberInput\` uses \`onValueChange(value: number | undefined)\`, not \`onChange\`")
+fi
+
+# Select/Option don't exist in DS v2
+if grep -qE "import[^;]*\b(Select|Option)\b[^;]*from ['\"]@strapi/design-system['\"]" "$file_path"; then
+  issues+=("• \`Select\`/\`Option\` are not exported by DS v2 — use \`SingleSelect\`/\`SingleSelectOption\` (or \`MultiSelect\`/\`MultiSelectOption\`)")
+fi
+
+# Field.Hint / Field.Error take no children — text goes on Field.Root
+if grep -qE '<Field\.(Hint|Error)>[^<]' "$file_path"; then
+  issues+=("• \`Field.Hint\`/\`Field.Error\` ignore children — pass the text via \`<Field.Root hint=... error=...>\` and render \`<Field.Hint />\`/\`<Field.Error />\`")
+fi
+
+# Trigger/Cancel/Action/Close parts always render asChild; the prop is not accepted
+if grep -qE '<(Dialog|Modal|Popover)\.(Trigger|Cancel|Action|Close)[^>]*\basChild\b' "$file_path"; then
+  issues+=("• \`asChild\` is not accepted on Dialog/Modal/Popover Trigger/Cancel/Action/Close — they already render as their child")
+fi
+
+# Toggle is an input: onChange + required onLabel/offLabel (Switch has onCheckedChange)
+if grep -qE '<Toggle[^>]*\bonCheckedChange=' "$file_path"; then
+  issues+=("• \`Toggle\` has no \`onCheckedChange\` — use \`onChange={(e) => ...e.target.checked}\` with \`onLabel\`/\`offLabel\`, or use \`Switch\`")
+fi
+
+# Icons that don't exist in @strapi/icons v2
+if grep -qE "import[^;]*\b(ExclamationMarkCircle|Refresh|Puzzle|EmptyDocuments)\b[^;]*from ['\"]@strapi/icons['\"]" "$file_path"; then
+  issues+=("• Icon not in \`@strapi/icons\` v2 — use \`WarningCircle\`, \`ArrowClockwise\`, \`PuzzlePiece\`; \`EmptyDocuments\` comes from \`@strapi/icons/symbols\`")
 fi
 
 # Path imports from @strapi/design-system

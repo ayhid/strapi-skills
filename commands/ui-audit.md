@@ -20,6 +20,8 @@ For each file under `admin/src/`, flag:
 8. **Missing `Field.Root` wrapper** around standalone `TextInput`/`Select`/etc.
 9. **`IconButton` without `label`** prop (accessibility).
 10. **Hand-rolled `<Main>` + `<Box>` page header** when `Page.Main` + `Layouts.Header` is canonical.
+11. **APIs that don't exist in DS 2.2.x** — `Select`/`Option` imports, text children in `Field.Hint`/`Field.Error` (put it on `Field.Root hint=`/`error=`), `asChild` on `Dialog`/`Modal`/`Popover` triggers, `Toggle` with `onCheckedChange` or without `onLabel`/`offLabel`, `Checkbox indeterminate`, `Alert` without `closeLabel`.
+12. **Tooltip wrapped around `IconButton`** — `IconButton`'s `label` already renders a tooltip.
 
 ## Output
 
