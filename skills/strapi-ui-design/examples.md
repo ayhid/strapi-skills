@@ -19,20 +19,21 @@ A full-featured plugin with navigation, CRUD operations, and proper routing.
 ### Plugin Registration
 
 ```tsx
-// admin/src/index.tsx
-import { getTranslation } from './utils/getTranslation';
+// admin/src/index.ts
 import { PLUGIN_ID } from './pluginId';
-import { Puzzle } from '@strapi/icons';
+import { PuzzlePiece } from '@strapi/icons';
+import { TaskPanel } from './components/TaskPanel';
 
 export default {
   register(app: any) {
     app.addMenuLink({
       to: `plugins/${PLUGIN_ID}`,
-      icon: Puzzle,
+      icon: PuzzlePiece,
       intlLabel: {
         id: `${PLUGIN_ID}.plugin.name`,
         defaultMessage: 'Task Manager',
       },
+      Component: () => import('./pages/App'),
       permissions: [],
     });
 
@@ -43,14 +44,10 @@ export default {
   },
 
   bootstrap(app: any) {
-    // Inject into Content Manager
-    app.injectComponent('editView', 'right-links', {
-      name: `${PLUGIN_ID}-panel`,
-      Component: async () => {
-        const component = await import('./components/ContentManagerPanel');
-        return component.default;
-      },
-    });
+    // Side panel in the Content Manager edit view. TaskPanel returns { title, content }
+    // and wraps its content in its own QueryClientProvider (see patterns.md
+    // "Edit View Side Panel") — it renders outside the plugin's App.
+    app.getPlugin('content-manager').apis.addEditViewSidePanel([TaskPanel]);
   },
 
   async registerTrads({ locales }: { locales: string[] }) {
@@ -112,19 +109,17 @@ export default App;
 ```tsx
 // admin/src/pages/HomePage.tsx
 import {
-  Main,
   Box,
   Flex,
   Typography,
   Grid,
   Card,
   Button,
-  Badge,
 } from '@strapi/design-system';
 import { Link } from 'react-router-dom';
-import { Plus, Cog, File, ChartPie } from '@strapi/icons';
+import { Plus, Cog, File } from '@strapi/icons';
 import { useQuery } from '@tanstack/react-query';
-import { useFetchClient } from '@strapi/strapi/admin';
+import { Page, Layouts, useFetchClient } from '@strapi/strapi/admin';
 import { PLUGIN_ID } from '../pluginId';
 
 interface Stats {
@@ -145,34 +140,25 @@ const HomePage = () => {
   });
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="alpha">Task Manager</Typography>
-            <Typography variant="epsilon" textColor="neutral600">
-              Manage tasks across your content
-            </Typography>
-          </Box>
-          <Flex gap={2}>
-            <Button
-              variant="secondary"
-              startIcon={<Cog />}
-              tag={Link}
-              to="settings"
-            >
-              Settings
-            </Button>
-            <Button startIcon={<Plus />} tag={Link} to="tasks">
-              View Tasks
-            </Button>
-          </Flex>
-        </Flex>
-      </Box>
-
+    <Page.Main>
+      <Page.Title>Task Manager</Page.Title>
+      <Layouts.Header
+        title="Task Manager"
+        subtitle="Manage tasks across your content"
+        secondaryAction={
+          <Button variant="secondary" startIcon={<Cog />} tag={Link} to="settings">
+            Settings
+          </Button>
+        }
+        primaryAction={
+          <Button startIcon={<Plus />} tag={Link} to="tasks">
+            View Tasks
+          </Button>
+        }
+      />
+      <Layouts.Content>
       {/* Quick Stats */}
-      <Box paddingLeft={10} paddingRight={10} paddingBottom={6}>
+      <Box paddingBottom={6}>
         <Grid.Root gap={6}>
           <Grid.Item col={4}>
             <Card padding={6}>
@@ -214,13 +200,13 @@ const HomePage = () => {
       </Box>
 
       {/* Quick Actions */}
-      <Box paddingLeft={10} paddingRight={10}>
+      <Box>
         <Typography variant="beta" paddingBottom={4}>
           Quick Actions
         </Typography>
         <Grid.Root gap={4}>
           <Grid.Item col={6}>
-            <Card padding={6} tag={Link} to="tasks" style={{ textDecoration: 'none' }}>
+            <Card padding={6} tag={Link} to="tasks" textDecoration="none">
               <Flex gap={4} alignItems="center">
                 <Box
                   background="primary100"
@@ -239,7 +225,7 @@ const HomePage = () => {
             </Card>
           </Grid.Item>
           <Grid.Item col={6}>
-            <Card padding={6} tag={Link} to="settings" style={{ textDecoration: 'none' }}>
+            <Card padding={6} tag={Link} to="settings" textDecoration="none">
               <Flex gap={4} alignItems="center">
                 <Box
                   background="secondary100"
@@ -259,7 +245,8 @@ const HomePage = () => {
           </Grid.Item>
         </Grid.Root>
       </Box>
-    </Main>
+      </Layouts.Content>
+    </Page.Main>
   );
 };
 
@@ -271,7 +258,6 @@ export default HomePage;
 ```tsx
 // admin/src/pages/TaskListPage.tsx
 import {
-  Main,
   Box,
   Flex,
   Typography,
@@ -283,18 +269,25 @@ import {
   Th,
   Td,
   IconButton,
-  Tooltip,
   Badge,
-  Searchbar,
-  Pagination,
   Loader,
   EmptyStateLayout,
 } from '@strapi/design-system';
-import { Plus, Pencil, Trash, Eye, ArrowLeft, EmptyDocuments } from '@strapi/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Pencil, Trash, Eye } from '@strapi/icons';
+import { EmptyDocuments } from '@strapi/icons/symbols';
+import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+import {
+  Page,
+  Layouts,
+  BackButton,
+  SearchInput,
+  Pagination,
+  useFetchClient,
+  useNotification,
+  useQueryParams,
+} from '@strapi/strapi/admin';
 import { PLUGIN_ID } from '../pluginId';
 import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog';
 import CreateTaskModal from '../components/CreateTaskModal';
@@ -314,20 +307,22 @@ const TaskListPage = () => {
   const { toggleNotification } = useNotification();
   const queryClient = useQueryClient();
 
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  // SearchInput writes `_q`, Pagination writes `page` / `pageSize` to the URL
+  const [{ query }] = useQueryParams<{ _q?: string; page?: string; pageSize?: string }>();
+  const search = query._q ?? '';
+  const currentPage = Number(query.page ?? 1);
+  const pageSize = Number(query.pageSize ?? 10);
+
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deleteTask, setDeleteTask] = useState<Task | null>(null);
 
-  const pageSize = 10;
-
   // Fetch tasks
   const { data, isLoading } = useQuery({
-    queryKey: [PLUGIN_ID, 'tasks', { search, page: currentPage }],
+    queryKey: [PLUGIN_ID, 'tasks', { search, page: currentPage, pageSize }],
     queryFn: async () => {
       const params = new URLSearchParams({
-        _start: String((currentPage - 1) * pageSize),
-        _limit: String(pageSize),
+        page: String(currentPage),
+        pageSize: String(pageSize),
         ...(search && { _q: search }),
       });
       const { data } = await get(`/${PLUGIN_ID}/tasks?${params}`);
@@ -390,55 +385,22 @@ const TaskListPage = () => {
   const pageCount = Math.ceil(totalCount / pageSize);
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Flex gap={4} alignItems="center">
-            <IconButton
-              label="Go back"
-              tag={Link}
-              to=".."
-            >
-              <ArrowLeft />
-            </IconButton>
-            <Box>
-              <Typography variant="alpha">Tasks</Typography>
-              <Typography variant="epsilon" textColor="neutral600">
-                {totalCount} task(s) found
-              </Typography>
-            </Box>
-          </Flex>
-          <Button
-            startIcon={<Plus />}
-            onClick={() => setIsCreateModalOpen(true)}
-          >
+    <Page.Main>
+      <Page.Title>Tasks</Page.Title>
+      <Layouts.Header
+        title="Tasks"
+        subtitle={`${totalCount} task(s) found`}
+        navigationAction={<BackButton fallback=".." />}
+        primaryAction={
+          <Button startIcon={<Plus />} onClick={() => setIsCreateModalOpen(true)}>
             Add Task
           </Button>
-        </Flex>
-      </Box>
+        }
+      />
+      {/* Search sits in the action bar below the header; it syncs `_q` to the URL */}
+      <Layouts.Action startActions={<SearchInput label="Search tasks" />} />
 
-      {/* Search */}
-      <Box paddingLeft={10} paddingRight={10} paddingBottom={4}>
-        <Searchbar
-          name="search"
-          value={search}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setSearch(e.target.value);
-            setCurrentPage(1);
-          }}
-          onClear={() => {
-            setSearch('');
-            setCurrentPage(1);
-          }}
-          placeholder="Search tasks..."
-        >
-          Search
-        </Searchbar>
-      </Box>
-
-      {/* Content */}
-      <Box paddingLeft={10} paddingRight={10}>
+      <Layouts.Content>
         {isLoading ? (
           <Flex justifyContent="center" padding={8}>
             <Loader>Loading tasks...</Loader>
@@ -496,31 +458,26 @@ const TaskListPage = () => {
                       </Typography>
                     </Td>
                     <Td>
+                      {/* IconButton's label doubles as its tooltip */}
                       <Flex gap={1}>
-                        <Tooltip description="View">
-                          <IconButton
-                            label="View"
-                            onClick={() => navigate(task.documentId)}
-                          >
-                            <Eye />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip description="Edit">
-                          <IconButton
-                            label="Edit"
-                            onClick={() => navigate(`${task.documentId}?edit=true`)}
-                          >
-                            <Pencil />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip description="Delete">
-                          <IconButton
-                            label="Delete"
-                            onClick={() => setDeleteTask(task)}
-                          >
-                            <Trash />
-                          </IconButton>
-                        </Tooltip>
+                        <IconButton
+                          label="View"
+                          onClick={() => navigate(task.documentId)}
+                        >
+                          <Eye />
+                        </IconButton>
+                        <IconButton
+                          label="Edit"
+                          onClick={() => navigate(`${task.documentId}?edit=true`)}
+                        >
+                          <Pencil />
+                        </IconButton>
+                        <IconButton
+                          label="Delete"
+                          onClick={() => setDeleteTask(task)}
+                        >
+                          <Trash />
+                        </IconButton>
                       </Flex>
                     </Td>
                   </Tr>
@@ -528,40 +485,21 @@ const TaskListPage = () => {
               </Tbody>
             </Table>
 
-            {/* Pagination */}
-            {pageCount > 1 && (
-              <Box paddingTop={4}>
-                <Flex justifyContent="flex-end">
-                  <Pagination activePage={currentPage} pageCount={pageCount}>
-                    <Pagination.PageLink
-                      number={1}
-                      onClick={() => setCurrentPage(1)}
-                    >
-                      First
-                    </Pagination.PageLink>
-                    <Pagination.PreviousLink
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    >
-                      Previous
-                    </Pagination.PreviousLink>
-                    <Pagination.NextLink
-                      onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
-                    >
-                      Next
-                    </Pagination.NextLink>
-                    <Pagination.PageLink
-                      number={pageCount}
-                      onClick={() => setCurrentPage(pageCount)}
-                    >
-                      Last
-                    </Pagination.PageLink>
-                  </Pagination>
-                </Flex>
-              </Box>
-            )}
+            {/* Pagination (admin): syncs `page` / `pageSize` to the URL */}
+            <Box paddingTop={4}>
+              <Pagination.Root
+                pageCount={pageCount}
+                total={totalCount}
+                defaultPage={currentPage}
+                defaultPageSize={pageSize}
+              >
+                <Pagination.PageSize />
+                <Pagination.Links />
+              </Pagination.Root>
+            </Box>
           </>
         )}
-      </Box>
+      </Layouts.Content>
 
       {/* Create Modal */}
       <CreateTaskModal
@@ -577,7 +515,7 @@ const TaskListPage = () => {
         itemName={deleteTask?.name || ''}
         isLoading={deleteMutation.isPending}
       />
-    </Main>
+    </Page.Main>
   );
 };
 
@@ -591,7 +529,6 @@ export default TaskListPage;
 ```tsx
 // admin/src/pages/SettingsPage.tsx
 import {
-  Main,
   Box,
   Flex,
   Typography,
@@ -602,16 +539,13 @@ import {
   TextInput,
   Textarea,
   Toggle,
-  Select,
-  Option,
-  Alert,
-  Loader,
+  SingleSelect,
+  SingleSelectOption,
 } from '@strapi/design-system';
-import { Check, ArrowLeft } from '@strapi/icons';
-import { Link } from 'react-router-dom';
+import { Check } from '@strapi/icons';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { Page, Layouts, BackButton, useFetchClient, useNotification } from '@strapi/strapi/admin';
 import { PLUGIN_ID } from '../pluginId';
 
 interface GeneralSettings {
@@ -696,32 +630,21 @@ const SettingsPage = () => {
     },
   });
 
+  if (isLoading) {
+    return <Page.Loading>Loading settings...</Page.Loading>;
+  }
+
   if (error) {
-    return (
-      <Main>
-        <Box padding={8}>
-          <Alert variant="danger">Failed to load settings</Alert>
-        </Box>
-      </Main>
-    );
+    return <Page.Error />;
   }
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Flex gap={4} alignItems="center">
-            <Button
-              variant="tertiary"
-              startIcon={<ArrowLeft />}
-              tag={Link}
-              to=".."
-            >
-              Back
-            </Button>
-            <Typography variant="alpha">Settings</Typography>
-          </Flex>
+    <Page.Main>
+      <Page.Title>Settings</Page.Title>
+      <Layouts.Header
+        title="Settings"
+        navigationAction={<BackButton fallback=".." />}
+        primaryAction={
           <Button
             startIcon={<Check />}
             onClick={() => saveMutation.mutate()}
@@ -729,16 +652,9 @@ const SettingsPage = () => {
           >
             Save
           </Button>
-        </Flex>
-      </Box>
-
-      {/* Content */}
-      <Box paddingLeft={10} paddingRight={10}>
-        {isLoading ? (
-          <Flex justifyContent="center" padding={8}>
-            <Loader>Loading settings...</Loader>
-          </Flex>
-        ) : (
+        }
+      />
+      <Layouts.Content>
           <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
             <Tabs.List>
               <Tabs.Trigger value="general">General</Tabs.Trigger>
@@ -754,7 +670,7 @@ const SettingsPage = () => {
                     General Settings
                   </Typography>
                   <Flex direction="column" gap={4}>
-                    <Field.Root name="taskPrefix">
+                    <Field.Root name="taskPrefix" hint="Prefix added to task identifiers">
                       <Field.Label>Task Prefix</Field.Label>
                       <TextInput
                         value={general.taskPrefix}
@@ -766,47 +682,41 @@ const SettingsPage = () => {
                         }
                         placeholder="TASK-"
                       />
-                      <Field.Hint>
-                        Prefix added to task identifiers
-                      </Field.Hint>
+                      <Field.Hint />
                     </Field.Root>
 
-                    <Field.Root name="defaultPriority">
+                    <Field.Root name="defaultPriority" hint="Default priority for new tasks">
                       <Field.Label>Default Priority</Field.Label>
-                      <Select
+                      <SingleSelect
                         value={general.defaultPriority}
-                        onChange={(value: string) =>
+                        onChange={(value) =>
                           setGeneral((prev) => ({
                             ...prev,
                             defaultPriority: value as GeneralSettings['defaultPriority'],
                           }))
                         }
                       >
-                        <Option value="low">Low</Option>
-                        <Option value="medium">Medium</Option>
-                        <Option value="high">High</Option>
-                      </Select>
-                      <Field.Hint>
-                        Default priority for new tasks
-                      </Field.Hint>
+                        <SingleSelectOption value="low">Low</SingleSelectOption>
+                        <SingleSelectOption value="medium">Medium</SingleSelectOption>
+                        <SingleSelectOption value="high">High</SingleSelectOption>
+                      </SingleSelect>
+                      <Field.Hint />
                     </Field.Root>
 
-                    <Field.Root name="enableNotifications">
-                      <Flex gap={2} alignItems="center">
-                        <Toggle
-                          checked={general.enableNotifications}
-                          onCheckedChange={(checked: boolean) =>
-                            setGeneral((prev) => ({
-                              ...prev,
-                              enableNotifications: checked,
-                            }))
-                          }
-                        />
-                        <Field.Label>Enable Notifications</Field.Label>
-                      </Flex>
-                      <Field.Hint>
-                        Show in-app notifications for task updates
-                      </Field.Hint>
+                    <Field.Root name="enableNotifications" hint="Show in-app notifications for task updates">
+                      <Field.Label>Enable Notifications</Field.Label>
+                      <Toggle
+                        checked={general.enableNotifications}
+                        onLabel="On"
+                        offLabel="Off"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setGeneral((prev) => ({
+                            ...prev,
+                            enableNotifications: e.target.checked,
+                          }))
+                        }
+                      />
+                      <Field.Hint />
                     </Field.Root>
                   </Flex>
                 </Card>
@@ -819,7 +729,7 @@ const SettingsPage = () => {
                     Integration Settings
                   </Typography>
                   <Flex direction="column" gap={4}>
-                    <Field.Root name="webhookUrl">
+                    <Field.Root name="webhookUrl" hint="URL to receive task event webhooks">
                       <Field.Label>Webhook URL</Field.Label>
                       <TextInput
                         value={integration.webhookUrl}
@@ -831,12 +741,10 @@ const SettingsPage = () => {
                         }
                         placeholder="https://example.com/webhook"
                       />
-                      <Field.Hint>
-                        URL to receive task event webhooks
-                      </Field.Hint>
+                      <Field.Hint />
                     </Field.Root>
 
-                    <Field.Root name="apiKey">
+                    <Field.Root name="apiKey" hint="API key for external service authentication">
                       <Field.Label>API Key</Field.Label>
                       <TextInput
                         type="password"
@@ -849,27 +757,23 @@ const SettingsPage = () => {
                         }
                         placeholder="Enter API key"
                       />
-                      <Field.Hint>
-                        API key for external service authentication
-                      </Field.Hint>
+                      <Field.Hint />
                     </Field.Root>
 
-                    <Field.Root name="syncEnabled">
-                      <Flex gap={2} alignItems="center">
-                        <Toggle
-                          checked={integration.syncEnabled}
-                          onCheckedChange={(checked: boolean) =>
-                            setIntegration((prev) => ({
-                              ...prev,
-                              syncEnabled: checked,
-                            }))
-                          }
-                        />
-                        <Field.Label>Enable Sync</Field.Label>
-                      </Flex>
-                      <Field.Hint>
-                        Automatically sync tasks with external service
-                      </Field.Hint>
+                    <Field.Root name="syncEnabled" hint="Automatically sync tasks with external service">
+                      <Field.Label>Enable Sync</Field.Label>
+                      <Toggle
+                        checked={integration.syncEnabled}
+                        onLabel="On"
+                        offLabel="Off"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setIntegration((prev) => ({
+                            ...prev,
+                            syncEnabled: e.target.checked,
+                          }))
+                        }
+                      />
+                      <Field.Hint />
                     </Field.Root>
                   </Flex>
                 </Card>
@@ -883,22 +787,22 @@ const SettingsPage = () => {
                   </Typography>
                   <Flex direction="column" gap={4}>
                     <Field.Root name="emailEnabled">
-                      <Flex gap={2} alignItems="center">
-                        <Toggle
-                          checked={notifications.emailEnabled}
-                          onCheckedChange={(checked: boolean) =>
-                            setNotifications((prev) => ({
-                              ...prev,
-                              emailEnabled: checked,
-                            }))
-                          }
-                        />
-                        <Field.Label>Email Notifications</Field.Label>
-                      </Flex>
+                      <Field.Label>Email Notifications</Field.Label>
+                      <Toggle
+                        checked={notifications.emailEnabled}
+                        onLabel="On"
+                        offLabel="Off"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setNotifications((prev) => ({
+                            ...prev,
+                            emailEnabled: e.target.checked,
+                          }))
+                        }
+                      />
                     </Field.Root>
 
                     {notifications.emailEnabled && (
-                      <Field.Root name="emailRecipients">
+                      <Field.Root name="emailRecipients" hint="Comma-separated list of email addresses">
                         <Field.Label>Email Recipients</Field.Label>
                         <Textarea
                           value={notifications.emailRecipients}
@@ -910,13 +814,11 @@ const SettingsPage = () => {
                           }
                           placeholder="email1@example.com, email2@example.com"
                         />
-                        <Field.Hint>
-                          Comma-separated list of email addresses
-                        </Field.Hint>
+                        <Field.Hint />
                       </Field.Root>
                     )}
 
-                    <Field.Root name="slackWebhook">
+                    <Field.Root name="slackWebhook" hint="Slack webhook URL for notifications">
                       <Field.Label>Slack Webhook</Field.Label>
                       <TextInput
                         value={notifications.slackWebhook}
@@ -928,18 +830,15 @@ const SettingsPage = () => {
                         }
                         placeholder="https://hooks.slack.com/..."
                       />
-                      <Field.Hint>
-                        Slack webhook URL for notifications
-                      </Field.Hint>
+                      <Field.Hint />
                     </Field.Root>
                   </Flex>
                 </Card>
               </Tabs.Content>
             </Box>
           </Tabs.Root>
-        )}
-      </Box>
-    </Main>
+      </Layouts.Content>
+    </Page.Main>
   );
 };
 
@@ -955,7 +854,6 @@ A page for managing data with filtering, bulk actions, and export.
 ```tsx
 // admin/src/pages/DataManagementPage.tsx
 import {
-  Main,
   Box,
   Flex,
   Typography,
@@ -967,27 +865,20 @@ import {
   Th,
   Td,
   Checkbox,
-  IconButton,
-  Tooltip,
   Badge,
   Searchbar,
-  Select,
-  Option,
+  SingleSelect,
+  SingleSelectOption,
   Field,
   Popover,
   Loader,
   EmptyStateLayout,
 } from '@strapi/design-system';
-import {
-  Plus,
-  Trash,
-  Download,
-  Filter,
-  EmptyDocuments,
-} from '@strapi/icons';
+import { Plus, Trash, Download, Filter } from '@strapi/icons';
+import { EmptyDocuments } from '@strapi/icons/symbols';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { Page, Layouts, useFetchClient, useNotification } from '@strapi/strapi/admin';
 
 interface DataItem {
   id: number;
@@ -1101,17 +992,15 @@ const DataManagementPage = () => {
   const hasActiveFilters = filters.status || filters.type;
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Typography variant="alpha">Data Management</Typography>
-          <Button startIcon={<Plus />}>Add Item</Button>
-        </Flex>
-      </Box>
-
+    <Page.Main>
+      <Page.Title>Data Management</Page.Title>
+      <Layouts.Header
+        title="Data Management"
+        primaryAction={<Button startIcon={<Plus />}>Add Item</Button>}
+      />
+      <Layouts.Content>
       {/* Toolbar */}
-      <Box paddingLeft={10} paddingRight={10} paddingBottom={4}>
+      <Box paddingBottom={4}>
         <Flex gap={4} justifyContent="space-between">
           <Flex gap={2} flex={1}>
             <Box flex={1} maxWidth="400px">
@@ -1122,6 +1011,7 @@ const DataManagementPage = () => {
                   setSearch(e.target.value)
                 }
                 onClear={() => setSearch('')}
+                clearLabel="Clear search"
                 placeholder="Search items..."
               >
                 Search
@@ -1147,34 +1037,36 @@ const DataManagementPage = () => {
                   <Flex direction="column" gap={4}>
                     <Field.Root name="statusFilter">
                       <Field.Label>Status</Field.Label>
-                      <Select
+                      <SingleSelect
                         value={filters.status}
-                        onChange={(value: string) =>
-                          setFilters((prev) => ({ ...prev, status: value }))
+                        onChange={(value) =>
+                          setFilters((prev) => ({ ...prev, status: String(value) }))
                         }
+                        onClear={() => setFilters((prev) => ({ ...prev, status: '' }))}
+                        clearLabel="Clear filter"
                         placeholder="All statuses"
                       >
-                        <Option value="">All</Option>
-                        <Option value="active">Active</Option>
-                        <Option value="inactive">Inactive</Option>
-                        <Option value="archived">Archived</Option>
-                      </Select>
+                        <SingleSelectOption value="active">Active</SingleSelectOption>
+                        <SingleSelectOption value="inactive">Inactive</SingleSelectOption>
+                        <SingleSelectOption value="archived">Archived</SingleSelectOption>
+                      </SingleSelect>
                     </Field.Root>
 
                     <Field.Root name="typeFilter">
                       <Field.Label>Type</Field.Label>
-                      <Select
+                      <SingleSelect
                         value={filters.type}
-                        onChange={(value: string) =>
-                          setFilters((prev) => ({ ...prev, type: value }))
+                        onChange={(value) =>
+                          setFilters((prev) => ({ ...prev, type: String(value) }))
                         }
+                        onClear={() => setFilters((prev) => ({ ...prev, type: '' }))}
+                        clearLabel="Clear filter"
                         placeholder="All types"
                       >
-                        <Option value="">All</Option>
-                        <Option value="document">Document</Option>
-                        <Option value="image">Image</Option>
-                        <Option value="video">Video</Option>
-                      </Select>
+                        <SingleSelectOption value="document">Document</SingleSelectOption>
+                        <SingleSelectOption value="image">Image</SingleSelectOption>
+                        <SingleSelectOption value="video">Video</SingleSelectOption>
+                      </SingleSelect>
                     </Field.Root>
 
                     <Flex justifyContent="flex-end" gap={2}>
@@ -1221,7 +1113,7 @@ const DataManagementPage = () => {
       </Box>
 
       {/* Table */}
-      <Box paddingLeft={10} paddingRight={10}>
+      <Box>
         {isLoading ? (
           <Flex justifyContent="center" padding={8}>
             <Loader>Loading data...</Loader>
@@ -1240,8 +1132,7 @@ const DataManagementPage = () => {
               <Tr>
                 <Th>
                   <Checkbox
-                    checked={allSelected}
-                    indeterminate={someSelected}
+                    checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                     onCheckedChange={toggleAll}
                     aria-label="Select all"
                   />
@@ -1288,7 +1179,8 @@ const DataManagementPage = () => {
           </Table>
         )}
       </Box>
-    </Main>
+      </Layouts.Content>
+    </Page.Main>
   );
 };
 
@@ -1302,7 +1194,6 @@ export default DataManagementPage;
 ```tsx
 // admin/src/pages/ImportExportPage.tsx
 import {
-  Main,
   Box,
   Flex,
   Typography,
@@ -1310,17 +1201,18 @@ import {
   Card,
   Grid,
   Field,
-  Select,
-  Option,
+  SingleSelect,
+  SingleSelectOption,
   Toggle,
   ProgressBar,
   Alert,
   Divider,
 } from '@strapi/design-system';
-import { Upload, Download, File } from '@strapi/icons';
+// Alias the icon: importing `File` would shadow the DOM `File` type used below
+import { Upload, Download, File as FileIcon } from '@strapi/icons';
 import { useState, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { Page, Layouts, useFetchClient, useNotification } from '@strapi/strapi/admin';
 
 const PLUGIN_ID = 'data-manager';
 
@@ -1447,17 +1339,13 @@ const ImportExportPage = () => {
   };
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Typography variant="alpha">Import / Export</Typography>
-        <Typography variant="epsilon" textColor="neutral600">
-          Import data from files or export your data
-        </Typography>
-      </Box>
-
-      {/* Content */}
-      <Box paddingLeft={10} paddingRight={10}>
+    <Page.Main>
+      <Page.Title>Import / Export</Page.Title>
+      <Layouts.Header
+        title="Import / Export"
+        subtitle="Import data from files or export your data"
+      />
+      <Layouts.Content>
         <Grid.Root gap={6}>
           {/* Import Section */}
           <Grid.Item col={6}>
@@ -1477,7 +1365,7 @@ const ImportExportPage = () => {
                     type="file"
                     accept=".json,.csv,.xlsx"
                     onChange={handleFileSelect}
-                    style={{ display: 'none' }}
+                    hidden
                     id="import-file"
                   />
                   <label htmlFor="import-file">
@@ -1488,14 +1376,14 @@ const ImportExportPage = () => {
                       borderStyle="dashed"
                       borderWidth="1px"
                       borderRadius="4px"
-                      style={{ cursor: 'pointer' }}
+                      cursor="pointer"
                     >
                       <Flex
                         direction="column"
                         alignItems="center"
                         gap={2}
                       >
-                        <File width="32px" height="32px" />
+                        <FileIcon width="32px" height="32px" />
                         {selectedFile ? (
                           <Typography fontWeight="semiBold">
                             {selectedFile.name}
@@ -1519,33 +1407,33 @@ const ImportExportPage = () => {
                 {selectedFile && (
                   <>
                     <Field.Root name="overwrite">
-                      <Flex gap={2} alignItems="center">
-                        <Toggle
-                          checked={importOptions.overwrite}
-                          onCheckedChange={(checked: boolean) =>
-                            setImportOptions((prev) => ({
-                              ...prev,
-                              overwrite: checked,
-                            }))
-                          }
-                        />
-                        <Field.Label>Overwrite existing items</Field.Label>
-                      </Flex>
+                      <Field.Label>Overwrite existing items</Field.Label>
+                      <Toggle
+                        checked={importOptions.overwrite}
+                        onLabel="On"
+                        offLabel="Off"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setImportOptions((prev) => ({
+                            ...prev,
+                            overwrite: e.target.checked,
+                          }))
+                        }
+                      />
                     </Field.Root>
 
                     <Field.Root name="skipErrors">
-                      <Flex gap={2} alignItems="center">
-                        <Toggle
-                          checked={importOptions.skipErrors}
-                          onCheckedChange={(checked: boolean) =>
-                            setImportOptions((prev) => ({
-                              ...prev,
-                              skipErrors: checked,
-                            }))
-                          }
-                        />
-                        <Field.Label>Skip items with errors</Field.Label>
-                      </Flex>
+                      <Field.Label>Skip items with errors</Field.Label>
+                      <Toggle
+                        checked={importOptions.skipErrors}
+                        onLabel="On"
+                        offLabel="Off"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setImportOptions((prev) => ({
+                            ...prev,
+                            skipErrors: e.target.checked,
+                          }))
+                        }
+                      />
                     </Field.Root>
 
                     {/* Progress */}
@@ -1563,6 +1451,8 @@ const ImportExportPage = () => {
                       <Alert
                         variant={importResult.failed > 0 ? 'warning' : 'success'}
                         title="Import Complete"
+                        closeLabel="Dismiss"
+                        onClose={() => setImportResult(null)}
                       >
                         <Typography>
                           {importResult.success} items imported successfully
@@ -1606,50 +1496,46 @@ const ImportExportPage = () => {
 
                 <Field.Root name="exportFormat">
                   <Field.Label>Export Format</Field.Label>
-                  <Select
+                  <SingleSelect
                     value={exportFormat}
-                    onChange={(value: string) => setExportFormat(value)}
+                    onChange={(value) => setExportFormat(String(value))}
                   >
-                    <Option value="json">JSON</Option>
-                    <Option value="csv">CSV</Option>
-                    <Option value="xlsx">Excel (XLSX)</Option>
-                  </Select>
+                    <SingleSelectOption value="json">JSON</SingleSelectOption>
+                    <SingleSelectOption value="csv">CSV</SingleSelectOption>
+                    <SingleSelectOption value="xlsx">Excel (XLSX)</SingleSelectOption>
+                  </SingleSelect>
                 </Field.Root>
 
-                <Field.Root name="includeRelations">
-                  <Flex gap={2} alignItems="center">
-                    <Toggle
-                      checked={exportOptions.includeRelations}
-                      onCheckedChange={(checked: boolean) =>
-                        setExportOptions((prev) => ({
-                          ...prev,
-                          includeRelations: checked,
-                        }))
-                      }
-                    />
-                    <Field.Label>Include relations</Field.Label>
-                  </Flex>
-                  <Field.Hint>
-                    Export related content with each item
-                  </Field.Hint>
+                <Field.Root name="includeRelations" hint="Export related content with each item">
+                  <Field.Label>Include relations</Field.Label>
+                  <Toggle
+                    checked={exportOptions.includeRelations}
+                    onLabel="On"
+                    offLabel="Off"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setExportOptions((prev) => ({
+                        ...prev,
+                        includeRelations: e.target.checked,
+                      }))
+                    }
+                  />
+                  <Field.Hint />
                 </Field.Root>
 
-                <Field.Root name="includeDrafts">
-                  <Flex gap={2} alignItems="center">
-                    <Toggle
-                      checked={exportOptions.includeDrafts}
-                      onCheckedChange={(checked: boolean) =>
-                        setExportOptions((prev) => ({
-                          ...prev,
-                          includeDrafts: checked,
-                        }))
-                      }
-                    />
-                    <Field.Label>Include drafts</Field.Label>
-                  </Flex>
-                  <Field.Hint>
-                    Export unpublished draft content
-                  </Field.Hint>
+                <Field.Root name="includeDrafts" hint="Export unpublished draft content">
+                  <Field.Label>Include drafts</Field.Label>
+                  <Toggle
+                    checked={exportOptions.includeDrafts}
+                    onLabel="On"
+                    offLabel="Off"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setExportOptions((prev) => ({
+                        ...prev,
+                        includeDrafts: e.target.checked,
+                      }))
+                    }
+                  />
+                  <Field.Hint />
                 </Field.Root>
 
                 <Button
@@ -1663,8 +1549,8 @@ const ImportExportPage = () => {
             </Card>
           </Grid.Item>
         </Grid.Root>
-      </Box>
-    </Main>
+      </Layouts.Content>
+    </Page.Main>
   );
 };
 
@@ -1680,20 +1566,17 @@ A dashboard using Strapi Design System with custom chart visualization.
 ```tsx
 // admin/src/pages/AnalyticsDashboard.tsx
 import {
-  Main,
   Box,
   Flex,
   Typography,
   Card,
   Grid,
-  Select,
-  Option,
-  Field,
+  SingleSelect,
+  SingleSelectOption,
   Badge,
-  Loader,
 } from '@strapi/design-system';
 import { useQuery } from '@tanstack/react-query';
-import { useFetchClient } from '@strapi/strapi/admin';
+import { Page, Layouts, useFetchClient } from '@strapi/strapi/admin';
 import { useState } from 'react';
 
 const PLUGIN_ID = 'analytics';
@@ -1738,10 +1621,8 @@ const BarChart = ({ data, maxValue }: BarChartProps) => (
             background="primary200"
             height="24px"
             borderRadius="4px"
-            style={{
-              width: `${(item.value / maxValue) * 100}%`,
-              minWidth: '20px',
-            }}
+            width={`${(item.value / maxValue) * 100}%`}
+            minWidth="20px"
           >
             <Flex
               height="100%"
@@ -1803,13 +1684,7 @@ const AnalyticsDashboard = () => {
   });
 
   if (isLoading) {
-    return (
-      <Main>
-        <Flex justifyContent="center" padding={8}>
-          <Loader>Loading analytics...</Loader>
-        </Flex>
-      </Main>
-    );
+    return <Page.Loading>Loading analytics...</Page.Loading>;
   }
 
   const overview = data?.overview;
@@ -1830,34 +1705,29 @@ const AnalyticsDashboard = () => {
   const maxContentValue = Math.max(...contentChartData.map((d) => d.value), 1);
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="alpha">Analytics Dashboard</Typography>
-            <Typography variant="epsilon" textColor="neutral600">
-              Overview of your content performance
-            </Typography>
-          </Box>
+    <Page.Main>
+      <Page.Title>Analytics Dashboard</Page.Title>
+      <Layouts.Header
+        title="Analytics Dashboard"
+        subtitle="Overview of your content performance"
+        primaryAction={
           <Box width="200px">
-            <Field.Root name="timeRange">
-              <Select
-                value={timeRange}
-                onChange={(value: string) => setTimeRange(value)}
-              >
-                <Option value="7d">Last 7 days</Option>
-                <Option value="30d">Last 30 days</Option>
-                <Option value="90d">Last 90 days</Option>
-                <Option value="1y">Last year</Option>
-              </Select>
-            </Field.Root>
+            <SingleSelect
+              aria-label="Time range"
+              value={timeRange}
+              onChange={(value) => setTimeRange(String(value))}
+            >
+              <SingleSelectOption value="7d">Last 7 days</SingleSelectOption>
+              <SingleSelectOption value="30d">Last 30 days</SingleSelectOption>
+              <SingleSelectOption value="90d">Last 90 days</SingleSelectOption>
+              <SingleSelectOption value="1y">Last year</SingleSelectOption>
+            </SingleSelect>
           </Box>
-        </Flex>
-      </Box>
-
+        }
+      />
+      <Layouts.Content>
       {/* Stats Grid */}
-      <Box paddingLeft={10} paddingRight={10} paddingBottom={6}>
+      <Box paddingBottom={6}>
         <Grid.Root gap={6}>
           <Grid.Item col={3}>
             <StatCard
@@ -1894,7 +1764,7 @@ const AnalyticsDashboard = () => {
       </Box>
 
       {/* Charts */}
-      <Box paddingLeft={10} paddingRight={10}>
+      <Box>
         <Grid.Root gap={6}>
           {/* Trends Chart */}
           <Grid.Item col={6}>
@@ -1958,7 +1828,8 @@ const AnalyticsDashboard = () => {
           </Grid.Item>
         </Grid.Root>
       </Box>
-    </Main>
+      </Layouts.Content>
+    </Page.Main>
   );
 };
 
@@ -1971,7 +1842,7 @@ export default AnalyticsDashboard;
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| Plugin Registration | `admin/src/index.tsx` | Menu links, injection zones, translations |
+| Plugin Registration | `admin/src/index.ts` | Menu links, Content Manager side panel, translations |
 | App Router | `admin/src/pages/App.tsx` | Route configuration with React Router |
 | Home Page | `admin/src/pages/HomePage.tsx` | Dashboard with stats and quick actions |
 | Task List | `admin/src/pages/TaskListPage.tsx` | CRUD table with search and pagination |
@@ -1984,10 +1855,10 @@ export default AnalyticsDashboard;
 
 | Pattern | Components | Purpose |
 |---------|------------|---------|
-| Page Structure | Main, Box, Flex, Typography | Consistent layout |
+| Page Structure | Page.Main, Layouts.Header, Layouts.Content | Consistent layout |
 | Data Tables | Table, Thead, Tbody, Tr, Td, Th | List display |
-| Forms | Field, TextInput, Select, Toggle | User input |
+| Forms | Field, TextInput, SingleSelect, Toggle | User input |
 | Navigation | Link, Button with tag prop | Routing |
-| State | React Query, useState | Data management |
-| Feedback | Badge, Alert, Loader | Status indication |
+| State | TanStack Query (own QueryClientProvider), useState, useQueryParams | Data management |
+| Feedback | Badge, Alert, Page.Loading / Page.Error | Status indication |
 | Dialogs | Modal, Dialog | Overlays |

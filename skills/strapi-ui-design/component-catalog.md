@@ -1,7 +1,7 @@
 # Strapi Design System v2 — Component Catalog (API Reference)
 
-> Derived directly from the `@strapi/design-system` **v2.2.1** source
-> (`packages/design-system/src/components`). This is the authoritative map of
+> Derived directly from the `@strapi/design-system` **v2.2.4** source
+> (`packages/design-system/src/components`, verified against the published `.d.ts`). This is the authoritative map of
 > **what you can import and how each component is shaped** — props, compound
 > sub-components, canonical usage, and gotchas. For task-oriented compositions
 > (a full form, a table with selection, a CRUD page), see
@@ -21,7 +21,7 @@
 | Number (with stepper, locale-aware) | `NumberInput` |
 | One choice from a short list | `SingleSelect` |
 | One choice, searchable / creatable | `Combobox` |
-| Many choices | `MultiSelect` |
+| Many choices | `MultiSelect` (`MultiSelectNested` for grouped trees) |
 | Boolean, two explicit labels (form field) | `Toggle` |
 | Boolean, on/off switch (settings) | `Switch` |
 | Boolean, simple checkbox / tri-state | `Checkbox` |
@@ -37,18 +37,19 @@
 | **Confirm / destructive** prompt | `Dialog.*` |
 | Floating panel | `Popover.*` |
 | Hover hint | `Tooltip` |
-| Dropdown action menu | `SimpleMenu` + `MenuItem` |
-| Data table | `Table` + `Thead/Tbody/Tr/Th/Td` |
+| Dropdown action menu | `SimpleMenu` + `MenuItem` (or `Menu.*` for custom triggers / submenus) |
+| Data table | `Table` + `Thead/Tbody/Tr/Th/Td` (list pages: admin `Table.*` from `@strapi/strapi/admin`) |
 | Collapsible grouping | `Accordion.*` |
 | Status pill (semantic) | `Status` |
 | Non-semantic label / count | `Badge` |
 | Removable chip | `Tag` |
 | Empty / no-results state | `EmptyStateLayout` |
 | Loading spinner | `Loader` |
-| Search field | `Searchbar` |
-| Pagination | `Pagination` + `PageLink` etc. |
+| Search field | `Searchbar` (list pages: admin `SearchInput`) |
+| Pagination | admin `Pagination.Root/Links/PageSize` (URL-synced); DS `Pagination` + `PreviousLink/PageLink/NextLink/Dots` for custom cases |
 | Tabs | `Tabs.*` |
 | Plugin sidebar | `SubNav*` |
+| Screen-reader announcement | `useNotifyAT()` (`notifyStatus` / `notifyAlert` / `notifyLog`) |
 | Page shell / header / RBAC gate | **`@strapi/strapi/admin`** (`Page.*`, `Layouts.*`) — not the DS |
 
 ---
@@ -73,7 +74,7 @@
     <Field.Error />
   </Field.Root>
   ```
-- **Gotchas**: `Field.Hint`/`Field.Error` read from context — they render nothing if Root has no hint/error. `Field.Label` renders null with no child.
+- **Gotchas**: `Field.Hint`/`Field.Error` take **no props and no children** — they read `hint`/`error` from Root context and render nothing if Root has none. `<Field.Hint>text</Field.Hint>` silently drops the text. `Field.Label` renders null with no child.
 
 ### TextInput
 - **Import**: `import { TextInput } from '@strapi/design-system'`
@@ -107,7 +108,7 @@
 
 ### Combobox
 - **Import**: `import { Combobox, ComboboxOption } from '@strapi/design-system'`
-- **Props**: `value?: string` · `onChange?: (value) => void` · `creatable?: boolean | 'visible'` · `allowCustomValue?: boolean` · `loading?: boolean` · `onCreateOption?: (value?) => void` · `onLoadMore?` · `hasMoreItems?: boolean` · `createMessage?: (value) => string` · `noOptionsMessage?` · `size?: 'S' | 'M'`
+- **Props**: `value?: string` · `onChange?: (value) => void` · `onInputChange?: (e) => void` · `onClear?` · `creatable?: boolean | 'visible'` · `creatableStartIcon?` · `allowCustomValue?: boolean` · `loading?: boolean` · `onCreateOption?: (value?) => void` · `onLoadMore?` · `hasMoreItems?: boolean` · `createMessage?: (value) => string` · `noOptionsMessage?` · `size?: 'S' | 'M'`
 - **Usage**:
   ```tsx
   <Combobox value={v} onChange={set} creatable onCreateOption={create}>
@@ -120,7 +121,7 @@
 - **Import**: `import { Checkbox } from '@strapi/design-system'`
 - **Props**: `checked?: boolean | 'indeterminate'` · `defaultChecked?` · `onCheckedChange?: (checked: boolean | 'indeterminate') => void` · `disabled?` · `name?/value?` · `children?` (auto-label)
 - **Usage**: `<Checkbox checked={c} onCheckedChange={set}>Remember me</Checkbox>`
-- **Gotchas**: tri-state — `'indeterminate'` renders a minus (great for "select all" headers). With `children`, auto-wraps a label.
+- **Gotchas**: tri-state — `checked="indeterminate"` renders a minus (great for "select all" headers). There is **no `indeterminate` prop**. With `children`, auto-wraps a label.
 
 ### Radio
 - **Import**: `import { Radio } from '@strapi/design-system'`
@@ -134,7 +135,7 @@
 - **Gotchas**: `Item` auto-renders label from children. IDs auto-generated. Radix-based.
 
 ### Toggle vs Switch (don't confuse them)
-- **Toggle** — `import { Toggle } from '@strapi/design-system'` — a **form field** showing two labeled buttons (off/on). Props: **`onLabel: string` + `offLabel: string` (required)** · `checked?: boolean | null` (default null) · `hasError?` · `id/name/required` (Field context). Use inside a Field for boolean entity attributes.
+- **Toggle** — `import { Toggle } from '@strapi/design-system'` — a **form field** showing two labeled buttons (off/on). Props: **`onLabel: string` + `offLabel: string` (required)** · `checked?: boolean | null` (default null) · `hasError?` · `id/name/required` (Field context). It is an `<input>`: change handler is **`onChange={(e) => set(e.target.checked)}`** — there is no `onCheckedChange`. Use inside a Field for boolean entity attributes.
 - **Switch** — `import { Switch } from '@strapi/design-system'` — a sliding on/off **control** for settings. Props: `checked?` · `onCheckedChange?: (checked: boolean) => void` · `onLabel?/offLabel?` · `visibleLabels?: boolean`. Radix-based.
 - **Rule of thumb**: data attribute on a record → `Toggle`; live preference/setting → `Switch`.
 
@@ -142,13 +143,13 @@
 - **Import**: `import { DatePicker, TimePicker, DateTimePicker } from '@strapi/design-system'`
 - **DatePicker props**: `value?: Date` · `onChange?: (date: Date | undefined) => void` · `onClear?` · `minDate?/maxDate?: Date` · `size?` · `locale?` · `required?`
 - **TimePicker props**: `value?: string` (`HH:mm`) · `onChange?: (value: string | undefined) => void` · `step?: number` (default 15, minutes)
-- **DateTimePicker props**: `value: Date | null | undefined` · `onChange: (date: Date | undefined) => void` · `dateLabel/timeLabel: string`
-- **Gotchas**: DatePicker uses `@internationalized/date` internally but the public API is a JS `Date`. TimePicker separator is locale-aware. **Project rule (Tiween): display `DD/MM/YYYY` + Western numerals even in Arabic** — set `locale` accordingly.
+- **DateTimePicker props** (all optional): `value?: Date | null` · `onChange?: (date: Date | undefined) => void` · `dateLabel?/timeLabel?: string`
+- **Gotchas**: DatePicker uses `@internationalized/date` internally but the public API is a JS `Date`. TimePicker separator is locale-aware. Set `locale` explicitly when the display format must not follow the admin language.
 
 ### JSONInput
 - **Import**: `import { JSONInput } from '@strapi/design-system'`
 - **Props**: `value?: string` (default '') · `onChange?: (value: string) => void` · `hasError?: boolean` · `disabled?: boolean`
-- **Gotchas**: CodeMirror-based with live JSON lint. Ref exposes `.focus()`/`.scrollIntoView()`. Value is a **string**, not a parsed object.
+- **Gotchas**: CodeMirror-based with live JSON lint. Ref type declares `.focus()` only. Value is a **string**, not a parsed object.
 
 ### CarouselInput
 - **Import**: `import { CarouselInput } from '@strapi/design-system'`
@@ -167,9 +168,9 @@
 
 ### IconButton
 - **Import**: `import { IconButton } from '@strapi/design-system'`
-- **Props**: **`label: string` (required, a11y)** · `size?: 'XS' | 'S' | 'M' | 'L'` · `variant?: 'primary' | 'secondary' | 'tertiary'` · `withTooltip?: boolean` (default true) · `disabled?`
+- **Props**: **`label: string` (required, a11y)** · `size?: 'XS' | 'S' | 'M' | 'L'` · `variant?:` any of the 8 `Button` variants (default `'tertiary'`) · `withTooltip?: boolean` (default true) · `disabled?`
 - **Usage**: `<IconButton label="Modifier" onClick={edit}><Pencil /></IconButton>`
-- **Gotchas**: `label` is mandatory — it's the `aria-label` AND the tooltip. `withTooltip` defaults to **true**.
+- **Gotchas**: `label` is mandatory — it's the `aria-label` AND the tooltip, so don't wrap it in `Tooltip` or add `aria-label`. `withTooltip` defaults to **true**. Group adjacent icon buttons with `IconButtonGroup`.
 
 ### LinkButton / TextButton
 - **LinkButton**: button styling, renders as a link (`tag={BaseLink}`). Inherits all `Button` props + `href`.
@@ -186,7 +187,7 @@
 - **Usage**:
   ```tsx
   <Modal.Root>
-    <Modal.Trigger><Button>Ouvrir</Button></Modal.Trigger>
+    <Modal.Trigger><Button>Ouvrir</Button></Modal.Trigger> {/* no asChild — always applied */}
     <Modal.Content>
       <Modal.Header closeLabel="Fermer"><Modal.Title>Titre</Modal.Title></Modal.Header>
       <Modal.Body>{form}</Modal.Body>
@@ -202,22 +203,22 @@
 - **Usage**:
   ```tsx
   <Dialog.Root>
-    <Dialog.Trigger asChild><Button variant="danger-light">Supprimer</Button></Dialog.Trigger>
+    <Dialog.Trigger><Button variant="danger-light">Supprimer</Button></Dialog.Trigger>
     <Dialog.Content>
       <Dialog.Header>Confirmer</Dialog.Header>
       <Dialog.Body>Action irréversible.</Dialog.Body>
       <Dialog.Footer>
-        <Dialog.Cancel asChild><Button variant="tertiary">Annuler</Button></Dialog.Cancel>
-        <Dialog.Action asChild><Button variant="danger">Supprimer</Button></Dialog.Action>
+        <Dialog.Cancel><Button variant="tertiary">Annuler</Button></Dialog.Cancel>
+        <Dialog.Action><Button variant="danger">Supprimer</Button></Dialog.Action>
       </Dialog.Footer>
     </Dialog.Content>
   </Dialog.Root>
   ```
-- **Gotchas**: Radix **AlertDialog**-based. `Trigger`/`Cancel`/`Action` need **`asChild`** to wrap a Button. Use Dialog for confirms; Modal for content/forms. Never `window.confirm()`.
+- **Gotchas**: Radix **AlertDialog**-based. `Trigger`/`Cancel`/`Action` always render as their child (`asChild` is forced internally and **omitted from the props type** — passing it is a TS error). Same for `Modal.Trigger`/`Modal.Close` and `Popover.Trigger`. Use Dialog for confirms; Modal for content/forms. Never `window.confirm()`.
 
 ### Popover / Tooltip
-- **Popover**: `Popover.Root/Trigger/Content/Anchor/Arrow/Anchor`. `Content` props: `side?: 'top' | 'bottom'` · `align?: 'start' | 'center' | 'end'` · `sideOffset?`. Has a `Popover.ScrollArea` with `onReachEnd` for lazy lists.
-- **Tooltip**: `import { Tooltip }`. Props: **`label?: ReactNode`** · `delayDuration?` (default 500ms) · `open?/defaultOpen?`. **`description` is `@deprecated` → use `label`.** Returns children unwrapped if no `label`.
+- **Popover**: `Popover.Root/Trigger/Content/Anchor/Arrow`. `Content` props (Radix `PopoverContentProps`): `side?: 'top' | 'right' | 'bottom' | 'left'` · `align?: 'start' | 'center' | 'end'` · `sideOffset?`. Has a `Popover.ScrollArea` with `onReachEnd` for lazy lists.
+- **Tooltip**: `import { Tooltip }`. Props: **`label?: ReactNode`** · `delayDuration?` (default 500ms) · `open?/defaultOpen?`. **`description` is `@deprecated` → use `label`.** Returns children unwrapped if no `label`. Not needed around `IconButton` (it has its own tooltip).
 
 ---
 
@@ -225,20 +226,20 @@
 
 ### Table
 - **Import**: `import { Table, Thead, Tbody, Tr, Th, Td, TFooter } from '@strapi/design-system'`
-- **Compound**: `Table` (root, `footer?` prop), `Thead`, `Tbody`, `Tr`, `Th`, `Td`, `TFooter`
+- **Compound**: `Table` (root: **`colCount: number` + `rowCount: number` required**, `footer?` prop), `Thead`, `Tbody`, `Tr`, `Th`, `Td`, `TFooter`
 - **Usage**:
   ```tsx
-  <Table footer={<TFooter>50 lieux</TFooter>}>
+  <Table colCount={2} rowCount={2} footer={<TFooter icon={<Plus />} onClick={add}>Ajouter un lieu</TFooter>}>
     <Thead><Tr><Th>Nom</Th><Th>Statut</Th></Tr></Thead>
     <Tbody><Tr><Td>…</Td><Td><Status variant="success">Approuvé</Status></Td></Tr></Tbody>
   </Table>
   ```
-- **Gotchas**: `Th` auto-colors `neutral600`, `Td` `neutral800`. Table auto-renders horizontal scroll shadows. **`Th`'s `action` prop is `@deprecated` — pass everything as children.** For keyboard-navigable raw grids use `RawTable`.
+- **Gotchas**: `Th` auto-colors `neutral600`, `Td` `neutral800`. Table auto-renders horizontal scroll shadows. **`Th`'s `action` prop is `@deprecated` — pass everything as children.** `TFooter` is an "add another entry" **button** (`icon` required), not a summary row. `rowCount` counts the header row. For keyboard-navigable raw grids use `RawTable`.
 
 ### Accordion
 - **Import**: `import { Accordion } from '@strapi/design-system'`
 - **Compound**: `Accordion.Root`, `Accordion.Item`, `Accordion.Header`, `Accordion.Trigger`, `Accordion.Content`, `Accordion.Actions`
-- **Props**: `size?: 'S' | 'M'` (Root) · `Trigger` → `description?: string`, `icon?: ElementType`, `caretPosition?: 'left' | 'right'`
+- **Props**: `size?: 'S' | 'M'` (Root) · `Header` → `variant?` · `Trigger` → `description?: string`, `icon?: ElementType`, `iconProps?`, `caretPosition?: 'left' | 'right'`
 - **Usage**:
   ```tsx
   <Accordion.Root size="S">
@@ -266,12 +267,13 @@
 
 ## Navigation
 
-- **Tabs**: `Tabs.Root` (`variant?: 'regular' | 'simple'`, `hasError?: string`) / `Tabs.List` / `Tabs.Trigger` (`value` required) / `Tabs.Content` (`value` required). Radix-based.
+- **Tabs**: `Tabs.Root` (`variant?: 'regular' | 'simple'`, `hasError?: string`, `disabled?`) / `Tabs.List` / `Tabs.Trigger` (`value` required) / `Tabs.Content` (`value` required). Radix-based.
 - **SubNav** (plugin sidebar): `SubNav`, `SubNavHeader` (`label`, `searchable?`, `value?`, `onChange?`), `SubNavSections`, `SubNavSection`, `SubNavLink` (`active?`, `icon?`), `SubNavLinkSection`.
 - **Breadcrumbs**: `Breadcrumbs` (`label?`) + `Crumb` (`isCurrent?`) + `CrumbLink` (`href`) + `CrumbSimpleMenu`. Dividers auto-inserted.
 - **Pagination**: `Pagination` (`activePage`, `pageCount`, `label?`) + `PreviousLink` / `NextLink` / `PageLink` (`number`) / `Dots`. `PageLink` auto-sets `aria-current`.
-- **Searchbar**: `name` (required) · **`onClear` (required)** · `clearLabel?` · children = visually-hidden label. ESC clears.
-- **SimpleMenu** + **MenuItem**: `SimpleMenu` (`label` required = button text) wraps a Radix menu; `MenuItem` are polymorphic links by default. `onReachEnd` for lazy menus.
+- **Searchbar**: **`name`, `onClear`, `clearLabel` and `children` are all required** · children = visually-hidden label. ESC clears.
+- **SimpleMenu** + **MenuItem**: `SimpleMenu` (`label?: ReactNode` = button text; pass `tag={IconButton}` + `icon` for an icon trigger) wraps a Radix menu; `MenuItem` accepts `variant="danger"`, `startIcon/endIcon`, `isLink`. `onReachEnd` for lazy menus.
+- **Menu**: `Menu.Root/Trigger/Content/Item/Separator/Label/SubRoot/SubTrigger/SubContent` — lower-level building blocks when `SimpleMenu` is too rigid.
 - **Link / BaseLink**: `Link` (`href`, `isExternal?`, `startIcon?/endIcon?`) auto-adds an external icon when `isExternal`. `BaseLink` is the unstyled base.
 
 ---
@@ -283,11 +285,12 @@ These are the most common false-import mistakes. They are **not** exported by
 `Layouts` import — that will not resolve.
 
 ```tsx
-import { Page, Layouts, useRBAC, useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { Page, Layouts, BackButton, useRBAC, useFetchClient, useNotification } from '@strapi/strapi/admin';
 ```
 
-- **`Page.Main`** — top-level page wrapper (loading/error boundary). · **`Page.Title`** — document title · **`Page.Error` / `Page.NoPermissions` / `Page.Loading`** — admin-standard states · **`Page.Protect`** — permission gate (pair with `useRBAC()`).
-- **`Layouts.Root` / `Layouts.Header` / `Layouts.Content` / `Layouts.Action`** — the page chrome. Prefer these over hand-rolled `<Main>` + `<Box>`.
+- **`Page.Main`** — top-level page wrapper (`<main>` landmark). · **`Page.Title`** — document title · **`Page.Error` / `Page.NoPermissions` / `Page.Loading` / `Page.NoData`** — admin-standard states · **`Page.Protect`** — permission gate (pair with `useRBAC()`).
+- **`Layouts.Root` / `Layouts.Header` / `Layouts.Content` / `Layouts.Action`** — the page chrome. `Layouts.Header` takes `title`, `subtitle`, `primaryAction`, `secondaryAction`, `navigationAction`; `Layouts.Action` is a separate bar below the header (`startActions`, `endActions`, `bottomActions`). Prefer these over hand-rolled `<Main>` + `<Box>`.
+- Also from `@strapi/strapi/admin`: `BackButton`, `ConfirmDialog` (inside `Dialog.Root`), `Table.*`, `SearchInput` (`label` required), `Pagination.Root/Links/PageSize`, `Form` / `useField` / `InputRenderer`, `SubNav.*`, `Widget.Loading/Error/NoData`.
 - **`Main`** (DS) is the low-level `<main>` landmark; `Page.Main` + `Layouts.*` is the higher-level, preferred shell.
 
 Canonical page skeleton:
@@ -296,6 +299,7 @@ Canonical page skeleton:
   <Page.Title>Lieux</Page.Title>
   <Layouts.Header
     title="Lieux"
+    navigationAction={<BackButton />}
     primaryAction={<Button startIcon={<Plus />}>Ajouter un lieu</Button>}
   />
   <Layouts.Content>{/* Table, EmptyStateLayout, etc. */}</Layouts.Content>
@@ -304,18 +308,25 @@ Canonical page skeleton:
 
 ---
 
-## Symbols that do NOT exist in DS v2 (verified against v2.2.1 source)
+## Symbols that do NOT exist in DS v2 (verified against v2.2.4 source)
 
 Do not emit these — they are removed/renamed and will fail to import or are deprecated:
 
-| Symbol | Reality in v2.2.1 | Use instead |
+| Symbol | Reality in v2.2.4 | Use instead |
 |--------|-------------------|-------------|
 | `ModalLayout`, `ModalHeader`, `ModalBody`, `ModalFooter` | **Removed** from source | `Modal.Root/Content/Header/Title/Body/Footer` |
 | `Tooltip` `description` prop | `@deprecated` | `label` |
 | `Th` `action` prop | `@deprecated` | pass as children |
 | `Layouts` / `Page` from `@strapi/design-system` | Not exported here | import from `@strapi/strapi/admin` |
+| `Select`, `Option` | Not exported | `SingleSelect` / `SingleSelectOption` (or `MultiSelect…`) |
+| `Checkbox indeterminate` prop | Doesn't exist | `checked="indeterminate"` |
+| `Toggle onCheckedChange` | Doesn't exist (Toggle is an `<input>`) | `onChange={(e) => …e.target.checked}`, or `Switch` |
+| `Pagination.PageLink` / `.PreviousLink` / `.NextLink` | Not a compound | separate exports `PageLink`, `PreviousLink`, `NextLink`, `Dots` — or admin `Pagination.*` |
+| `asChild` on `Dialog`/`Modal`/`Popover` triggers | Omitted from props (forced on) | just nest the Button |
+| Icons `ExclamationMarkCircle`, `Refresh`, `Puzzle` | Not in `@strapi/icons` 2.2.4 | `WarningCircle`, `ArrowClockwise`, `PuzzlePiece` |
+| `EmptyDocuments` etc. from `@strapi/icons` | Illustrations live in a sub-entry | `import { EmptyDocuments } from '@strapi/icons/symbols'` |
 | Native `<button>/<input>/<select>/<table>` in admin | n/a | the DS component above |
 
-> Snapshot taken from `@strapi/design-system@2.2.1`. Re-run the extraction
+> Snapshot taken from `@strapi/design-system@2.2.4`. Re-run the extraction
 > (clone the repo, parse `packages/design-system/src/components`) when bumping to
 > a new major/minor to keep this catalog honest.

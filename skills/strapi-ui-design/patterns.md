@@ -33,7 +33,6 @@ import {
   IconButton,
   Flex,
   Box,
-  Tooltip,
   Badge,
 } from '@strapi/design-system';
 import { Pencil, Trash, Eye } from '@strapi/icons';
@@ -91,31 +90,17 @@ const DataTable = ({ items, onEdit, onDelete, onView }: DataTableProps) => {
               </Typography>
             </Td>
             <Td>
+              {/* IconButton shows its `label` as a tooltip — no Tooltip wrapper needed */}
               <Flex gap={1}>
-                <Tooltip description="View">
-                  <IconButton
-                    label="View"
-                    onClick={() => onView(item.id)}
-                  >
-                    <Eye />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip description="Edit">
-                  <IconButton
-                    label="Edit"
-                    onClick={() => onEdit(item.id)}
-                  >
-                    <Pencil />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip description="Delete">
-                  <IconButton
-                    label="Delete"
-                    onClick={() => onDelete(item.id)}
-                  >
-                    <Trash />
-                  </IconButton>
-                </Tooltip>
+                <IconButton label="View" onClick={() => onView(item.id)}>
+                  <Eye />
+                </IconButton>
+                <IconButton label="Edit" onClick={() => onEdit(item.id)}>
+                  <Pencil />
+                </IconButton>
+                <IconButton label="Delete" onClick={() => onDelete(item.id)}>
+                  <Trash />
+                </IconButton>
               </Flex>
             </Td>
           </Tr>
@@ -195,8 +180,7 @@ const SelectableTable = ({ items, onBulkDelete }: SelectableTableProps) => {
           <Tr>
             <Th>
               <Checkbox
-                checked={allSelected}
-                indeterminate={someSelected}
+                checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                 onCheckedChange={toggleAll}
                 aria-label="Select all"
               />
@@ -240,9 +224,9 @@ import {
   Td,
   Typography,
   Flex,
-  Pagination,
   Box,
 } from '@strapi/design-system';
+import { Pagination } from '@strapi/strapi/admin';
 import { CaretUp, CaretDown } from '@strapi/icons';
 import { useState } from 'react';
 
@@ -250,21 +234,13 @@ type SortOrder = 'asc' | 'desc';
 
 interface SortableTableProps {
   items: Array<{ id: number; name: string; createdAt: string }>;
-  totalCount: number;
-  pageSize: number;
-  currentPage: number;
-  onPageChange: (page: number) => void;
+  // From the API response meta. The admin Pagination writes `page` / `pageSize`
+  // to the URL — read them in the parent with `useQueryParams()` to refetch.
+  pagination: { page: number; pageSize: number; pageCount: number; total: number };
   onSort: (field: string, order: SortOrder) => void;
 }
 
-const SortableTable = ({
-  items,
-  totalCount,
-  pageSize,
-  currentPage,
-  onPageChange,
-  onSort,
-}: SortableTableProps) => {
+const SortableTable = ({ items, pagination, onSort }: SortableTableProps) => {
   const [sortField, setSortField] = useState<string>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
@@ -280,26 +256,23 @@ const SortableTable = ({
     return sortOrder === 'asc' ? <CaretUp /> : <CaretDown />;
   };
 
-  const pageCount = Math.ceil(totalCount / pageSize);
-
   return (
     <Box>
       <Table colCount={2} rowCount={items.length + 1}>
         <Thead>
           <Tr>
-            <Th
-              action={<SortIcon field="name" />}
-              onClick={() => handleSort('name')}
-              style={{ cursor: 'pointer' }}
-            >
-              <Typography variant="sigma">Name</Typography>
+            {/* `Th` `action` is deprecated: put the sort icon in children */}
+            <Th onClick={() => handleSort('name')} cursor="pointer">
+              <Flex gap={1}>
+                <Typography variant="sigma">Name</Typography>
+                <SortIcon field="name" />
+              </Flex>
             </Th>
-            <Th
-              action={<SortIcon field="createdAt" />}
-              onClick={() => handleSort('createdAt')}
-              style={{ cursor: 'pointer' }}
-            >
-              <Typography variant="sigma">Created</Typography>
+            <Th onClick={() => handleSort('createdAt')} cursor="pointer">
+              <Flex gap={1}>
+                <Typography variant="sigma">Created</Typography>
+                <SortIcon field="createdAt" />
+              </Flex>
             </Th>
           </Tr>
         </Thead>
@@ -319,18 +292,15 @@ const SortableTable = ({
         </Tbody>
       </Table>
       <Box paddingTop={4}>
-        <Flex justifyContent="flex-end">
-          <Pagination activePage={currentPage} pageCount={pageCount}>
-            <Pagination.PageLink number={1}>First</Pagination.PageLink>
-            <Pagination.PreviousLink onClick={() => onPageChange(currentPage - 1)}>
-              Previous
-            </Pagination.PreviousLink>
-            <Pagination.NextLink onClick={() => onPageChange(currentPage + 1)}>
-              Next
-            </Pagination.NextLink>
-            <Pagination.PageLink number={pageCount}>Last</Pagination.PageLink>
-          </Pagination>
-        </Flex>
+        <Pagination.Root
+          pageCount={pagination.pageCount}
+          total={pagination.total}
+          defaultPage={pagination.page}
+          defaultPageSize={pagination.pageSize}
+        >
+          <Pagination.PageSize />
+          <Pagination.Links />
+        </Pagination.Root>
       </Box>
     </Box>
   );
@@ -352,8 +322,8 @@ import {
   Field,
   TextInput,
   Textarea,
-  Select,
-  Option,
+  SingleSelect,
+  SingleSelectOption,
   Toggle,
   Grid,
 } from '@strapi/design-system';
@@ -432,7 +402,12 @@ const EntityForm = ({
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap={6}>
         {/* Title Field */}
-        <Field.Root name="title" error={errors.title} required>
+        <Field.Root
+          name="title"
+          error={errors.title}
+          hint="A descriptive title for your item"
+          required
+        >
           <Field.Label>Title</Field.Label>
           <TextInput
             value={formData.title}
@@ -442,12 +417,13 @@ const EntityForm = ({
             placeholder="Enter a title"
             disabled={isLoading}
           />
-          <Field.Hint>A descriptive title for your item</Field.Hint>
+          {/* Field.Hint / Field.Error take no children: they render Root's hint / error */}
+          <Field.Hint />
           <Field.Error />
         </Field.Root>
 
         {/* Description Field */}
-        <Field.Root name="description">
+        <Field.Root name="description" hint="Provide additional details">
           <Field.Label>Description</Field.Label>
           <Textarea
             value={formData.description}
@@ -457,38 +433,38 @@ const EntityForm = ({
             placeholder="Enter a description (optional)"
             disabled={isLoading}
           />
-          <Field.Hint>Provide additional details</Field.Hint>
+          <Field.Hint />
         </Field.Root>
 
         {/* Category Field */}
         <Field.Root name="category" error={errors.category} required>
           <Field.Label>Category</Field.Label>
-          <Select
+          <SingleSelect
             value={formData.category}
-            onChange={(value: string) => handleChange('category', value)}
+            onChange={(value) => handleChange('category', String(value))}
             placeholder="Select a category"
             disabled={isLoading}
           >
-            <Option value="general">General</Option>
-            <Option value="technical">Technical</Option>
-            <Option value="marketing">Marketing</Option>
-          </Select>
+            <SingleSelectOption value="general">General</SingleSelectOption>
+            <SingleSelectOption value="technical">Technical</SingleSelectOption>
+            <SingleSelectOption value="marketing">Marketing</SingleSelectOption>
+          </SingleSelect>
           <Field.Error />
         </Field.Root>
 
         {/* Published Toggle */}
-        <Field.Root name="isPublished">
-          <Flex gap={2} alignItems="center">
-            <Toggle
-              checked={formData.isPublished}
-              onCheckedChange={(checked: boolean) =>
-                handleChange('isPublished', checked)
-              }
-              disabled={isLoading}
-            />
-            <Field.Label>Published</Field.Label>
-          </Flex>
-          <Field.Hint>Make this item visible to the public</Field.Hint>
+        <Field.Root name="isPublished" hint="Make this item visible to the public">
+          <Field.Label>Published</Field.Label>
+          <Toggle
+            checked={formData.isPublished}
+            onLabel="Yes"
+            offLabel="No"
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              handleChange('isPublished', e.target.checked)
+            }
+            disabled={isLoading}
+          />
+          <Field.Hint />
         </Field.Root>
 
         {/* Form Actions */}
@@ -680,7 +656,7 @@ import {
   Flex,
   Typography,
 } from '@strapi/design-system';
-import { Trash, ExclamationMarkCircle } from '@strapi/icons';
+import { Trash, WarningCircle } from '@strapi/icons';
 
 interface ConfirmDeleteDialogProps {
   isOpen: boolean;
@@ -701,7 +677,7 @@ const ConfirmDeleteDialog = ({
     <Dialog.Root open={isOpen} onOpenChange={onClose}>
       <Dialog.Content>
         <Dialog.Header>Delete {itemName}</Dialog.Header>
-        <Dialog.Body icon={<ExclamationMarkCircle />}>
+        <Dialog.Body icon={<WarningCircle fill="danger600" />}>
           <Flex direction="column" gap={2}>
             <Typography>
               Are you sure you want to delete <strong>{itemName}</strong>?
@@ -949,8 +925,6 @@ const DetailModal = ({
 
 ```tsx
 import {
-  Main,
-  Box,
   Flex,
   Typography,
   Button,
@@ -959,11 +933,12 @@ import {
   Toggle,
   Card,
   Grid,
-  Alert,
 } from '@strapi/design-system';
 import { Check } from '@strapi/icons';
+// Requires the plugin's own <QueryClientProvider> above this page —
+// the Strapi admin does not provide a TanStack Query client.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { Page, Layouts, useFetchClient, useNotification } from '@strapi/strapi/admin';
 import { useState, useEffect } from 'react';
 
 interface PluginSettings {
@@ -1027,27 +1002,21 @@ const SettingsPage = () => {
     saveMutation.mutate(settings);
   };
 
+  if (isLoading) {
+    return <Page.Loading />;
+  }
+
   if (error) {
-    return (
-      <Main>
-        <Box padding={8}>
-          <Alert variant="danger">Failed to load settings</Alert>
-        </Box>
-      </Main>
-    );
+    return <Page.Error />;
   }
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="alpha">Settings</Typography>
-            <Typography variant="epsilon" textColor="neutral600">
-              Configure your plugin settings
-            </Typography>
-          </Box>
+    <Page.Main>
+      <Page.Title>Settings</Page.Title>
+      <Layouts.Header
+        title="Settings"
+        subtitle="Configure your plugin settings"
+        primaryAction={
           <Button
             type="submit"
             form="settings-form"
@@ -1056,11 +1025,9 @@ const SettingsPage = () => {
           >
             Save
           </Button>
-        </Flex>
-      </Box>
-
-      {/* Content */}
-      <Box paddingLeft={10} paddingRight={10}>
+        }
+      />
+      <Layouts.Content>
         <form id="settings-form" onSubmit={handleSubmit}>
           <Grid.Root gap={6}>
             {/* API Configuration */}
@@ -1070,7 +1037,7 @@ const SettingsPage = () => {
                   API Configuration
                 </Typography>
                 <Flex direction="column" gap={4}>
-                  <Field.Root name="apiKey">
+                  <Field.Root name="apiKey" hint="Your API key for authentication">
                     <Field.Label>API Key</Field.Label>
                     <TextInput
                       type="password"
@@ -1084,12 +1051,10 @@ const SettingsPage = () => {
                       placeholder="Enter your API key"
                       disabled={isLoading}
                     />
-                    <Field.Hint>
-                      Your API key for authentication
-                    </Field.Hint>
+                    <Field.Hint />
                   </Field.Root>
 
-                  <Field.Root name="webhookUrl">
+                  <Field.Root name="webhookUrl" hint="URL to receive webhook notifications">
                     <Field.Label>Webhook URL</Field.Label>
                     <TextInput
                       value={settings.webhookUrl}
@@ -1102,9 +1067,7 @@ const SettingsPage = () => {
                       placeholder="https://example.com/webhook"
                       disabled={isLoading}
                     />
-                    <Field.Hint>
-                      URL to receive webhook notifications
-                    </Field.Hint>
+                    <Field.Hint />
                   </Field.Root>
                 </Flex>
               </Card>
@@ -1116,30 +1079,30 @@ const SettingsPage = () => {
                 <Typography variant="delta" paddingBottom={4}>
                   Feature Toggles
                 </Typography>
-                <Field.Root name="isEnabled">
-                  <Flex gap={2} alignItems="center">
-                    <Toggle
-                      checked={settings.isEnabled}
-                      onCheckedChange={(checked: boolean) =>
-                        setSettings((prev) => ({
-                          ...prev,
-                          isEnabled: checked,
-                        }))
-                      }
-                      disabled={isLoading}
-                    />
-                    <Field.Label>Enable Plugin</Field.Label>
-                  </Flex>
-                  <Field.Hint>
-                    Enable or disable the plugin functionality
-                  </Field.Hint>
+                <Field.Root
+                  name="isEnabled"
+                  hint="Enable or disable the plugin functionality"
+                >
+                  <Field.Label>Enable Plugin</Field.Label>
+                  <Toggle
+                    checked={settings.isEnabled}
+                    onLabel="Enabled"
+                    offLabel="Disabled"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        isEnabled: e.target.checked,
+                      }))
+                    }
+                  />
+                  <Field.Hint />
                 </Field.Root>
               </Card>
             </Grid.Item>
           </Grid.Root>
         </form>
-      </Box>
-    </Main>
+      </Layouts.Content>
+    </Page.Main>
   );
 };
 
@@ -1153,17 +1116,9 @@ export default SettingsPage;
 ### Statistics Dashboard
 
 ```tsx
-import {
-  Main,
-  Box,
-  Flex,
-  Typography,
-  Card,
-  Grid,
-  Loader,
-} from '@strapi/design-system';
-import { useQuery } from '@tanstack/react-query';
-import { useFetchClient } from '@strapi/strapi/admin';
+import { Flex, Typography, Card, Grid } from '@strapi/design-system';
+import { useQuery } from '@tanstack/react-query'; // needs the plugin's own QueryClientProvider
+import { Page, Layouts, useFetchClient } from '@strapi/strapi/admin';
 
 interface Stats {
   totalItems: number;
@@ -1194,7 +1149,7 @@ const StatCard = ({ label, value, color = 'primary600' }: StatCardProps) => (
 const Dashboard = () => {
   const { get } = useFetchClient();
 
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading, error } = useQuery({
     queryKey: ['my-plugin', 'stats'],
     queryFn: async () => {
       const { data } = await get('/my-plugin/stats');
@@ -1203,27 +1158,18 @@ const Dashboard = () => {
   });
 
   if (isLoading) {
-    return (
-      <Main>
-        <Flex justifyContent="center" padding={8}>
-          <Loader>Loading statistics...</Loader>
-        </Flex>
-      </Main>
-    );
+    return <Page.Loading>Loading statistics...</Page.Loading>;
+  }
+
+  if (error) {
+    return <Page.Error />;
   }
 
   return (
-    <Main>
-      {/* Header */}
-      <Box paddingLeft={10} paddingRight={10} paddingTop={8} paddingBottom={6}>
-        <Typography variant="alpha">Dashboard</Typography>
-        <Typography variant="epsilon" textColor="neutral600">
-          Overview of your plugin activity
-        </Typography>
-      </Box>
-
-      {/* Stats Grid */}
-      <Box paddingLeft={10} paddingRight={10}>
+    <Page.Main>
+      <Page.Title>Dashboard</Page.Title>
+      <Layouts.Header title="Dashboard" subtitle="Overview of your plugin activity" />
+      <Layouts.Content>
         <Grid.Root gap={6}>
           <Grid.Item col={3}>
             <StatCard label="Total Items" value={stats?.totalItems || 0} />
@@ -1250,8 +1196,8 @@ const Dashboard = () => {
             />
           </Grid.Item>
         </Grid.Root>
-      </Box>
-    </Main>
+      </Layouts.Content>
+    </Page.Main>
   );
 };
 
@@ -1262,88 +1208,77 @@ export default Dashboard;
 
 ## Content Manager Integration
 
-### Injection Zone Panel
+### Edit View Side Panel
+
+The Content Manager's dedicated API for a sidebar panel is `addEditViewSidePanel`. A panel is a
+function that receives the edit-view context as props (`model`, `documentId`, `document`,
+`collectionType`, `activeTab`, `meta`) and returns `{ title, content }` — no need for
+`unstable_useContentManagerContext`.
+
+Panels render inside the Content Manager, **outside your plugin's `App`**, so anything that needs
+a provider (e.g. TanStack Query's `QueryClientProvider`) must be wrapped here too.
 
 ```tsx
-// admin/src/components/ContentManagerPanel.tsx
-import {
-  Box,
-  Flex,
-  Typography,
-  Button,
-  Field,
-  TextInput,
-  Card,
-  Loader,
-} from '@strapi/design-system';
-import { Plus, Refresh } from '@strapi/icons';
-import { unstable_useContentManagerContext as useContentManagerContext } from '@strapi/strapi/admin';
-import { useQuery } from '@tanstack/react-query';
+// admin/src/components/RelatedPanel.tsx
+import { Box, Flex, Typography, Button, Loader } from '@strapi/design-system';
+import { Plus } from '@strapi/icons';
 import { useFetchClient } from '@strapi/strapi/admin';
+// Type-only import: add @strapi/content-manager to devDependencies
+import type { PanelComponent, PanelComponentProps } from '@strapi/content-manager/strapi-admin';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 
-const ContentManagerPanel = () => {
-  const context = useContentManagerContext();
+const queryClient = new QueryClient();
+
+const RelatedContent = ({ model, documentId }: PanelComponentProps) => {
   const { get } = useFetchClient();
 
-  // Get current document info
-  const { model, id, document } = context;
-
-  // Fetch related data
   const { data, isLoading } = useQuery({
-    queryKey: ['my-plugin', 'related', model, id],
+    queryKey: ['my-plugin', 'related', model, documentId],
     queryFn: async () => {
-      const { data } = await get(`/my-plugin/related/${model}/${id}`);
+      const { data } = await get(`/my-plugin/related/${model}/${documentId}`);
       return data;
     },
-    enabled: !!id, // Only fetch if we have an ID (not a new document)
+    enabled: !!documentId, // undefined while creating a new entry
   });
 
-  if (!id) {
+  if (!documentId) {
     return (
-      <Box padding={4}>
-        <Typography textColor="neutral600">
-          Save the document to see related data.
-        </Typography>
-      </Box>
+      <Typography textColor="neutral600">
+        Save the document to see related data.
+      </Typography>
     );
   }
 
   if (isLoading) {
-    return (
-      <Box padding={4}>
-        <Loader small>Loading...</Loader>
-      </Box>
-    );
+    return <Loader small>Loading...</Loader>;
   }
 
   return (
-    <Box padding={4}>
-      <Typography variant="sigma" textColor="neutral600" paddingBottom={2}>
-        Plugin Panel
-      </Typography>
-      <Card padding={4}>
-        <Flex direction="column" gap={3}>
-          <Typography variant="omega">
-            Related items: {data?.count || 0}
-          </Typography>
-          <Button variant="secondary" startIcon={<Plus />} fullWidth>
-            Add Related Item
-          </Button>
-        </Flex>
-      </Card>
-    </Box>
+    <Flex direction="column" alignItems="stretch" gap={3} width="100%">
+      <Typography variant="omega">Related items: {data?.count || 0}</Typography>
+      <Button variant="secondary" startIcon={<Plus />} fullWidth>
+        Add Related Item
+      </Button>
+    </Flex>
   );
 };
 
-export default ContentManagerPanel;
+export const RelatedPanel: PanelComponent = (props) => ({
+  title: 'Related items',
+  content: (
+    <QueryClientProvider client={queryClient}>
+      <RelatedContent {...props} />
+    </QueryClientProvider>
+  ),
+});
 ```
 
-### Registering Injection Zone
+### Registering the Panel
 
 ```tsx
-// admin/src/index.tsx
-import { getTranslation } from './utils/getTranslation';
+// admin/src/index.ts
 import { PLUGIN_ID } from './pluginId';
+import { RelatedPanel } from './components/RelatedPanel';
 
 export default {
   register(app: any) {
@@ -1354,14 +1289,15 @@ export default {
   },
 
   bootstrap(app: any) {
-    // Inject into Content Manager edit view
-    app.injectComponent('editView', 'right-links', {
-      name: 'my-plugin-panel',
-      Component: async () => {
-        const component = await import('./components/ContentManagerPanel');
-        return component.default;
-      },
-    });
+    // Side panel in the Content Manager edit view
+    app.getPlugin('content-manager').apis.addEditViewSidePanel([RelatedPanel]);
+
+    // Or, for a plain injection zone, call injectComponent on the content-manager
+    // plugin (not on `app`) and pass a real component — not an async import loader:
+    // app.getPlugin('content-manager').injectComponent('editView', 'right-links', {
+    //   name: 'my-plugin-links',
+    //   Component: MyLinks,
+    // });
   },
 };
 ```
@@ -1369,6 +1305,34 @@ export default {
 ---
 
 ## State Management Patterns
+
+### Providing a Query Client
+
+The Strapi admin uses `react-query` v3 internally and does **not** expose a TanStack Query v5
+client. If you use `@tanstack/react-query`, add it to your plugin's `dependencies` and provide your
+own client around your plugin routes (and around every component you inject into the Content
+Manager — see the side panel pattern above):
+
+```tsx
+// admin/src/pages/App.tsx
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Routes, Route } from 'react-router-dom';
+import { Page } from '@strapi/strapi/admin';
+import { HomePage } from './HomePage';
+
+const queryClient = new QueryClient();
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <Routes>
+      <Route index element={<HomePage />} />
+      <Route path="*" element={<Page.Error />} />
+    </Routes>
+  </QueryClientProvider>
+);
+
+export default App;
+```
 
 ### Custom Hook for CRUD Operations
 
@@ -1526,6 +1490,7 @@ class ErrorBoundary extends Component<Props, State> {
           <Alert
             variant="danger"
             title="Something went wrong"
+            closeLabel="Close"
             action={
               <Button
                 variant="secondary"
@@ -1570,6 +1535,7 @@ const ApiError = ({ error, onRetry }: ApiErrorProps) => {
       <Alert
         variant="danger"
         title="Error loading data"
+        closeLabel="Close"
         action={
           onRetry && (
             <Button
@@ -1597,28 +1563,18 @@ export default ApiError;
 
 ### Full Page Loading
 
+Use the admin's page states instead of hand-rolling a centered `Loader`:
+
 ```tsx
-import { Main, Flex, Loader } from '@strapi/design-system';
+import { Page } from '@strapi/strapi/admin';
 
-interface PageLoaderProps {
-  message?: string;
-}
-
-const PageLoader = ({ message = 'Loading...' }: PageLoaderProps) => (
-  <Main>
-    <Flex
-      justifyContent="center"
-      alignItems="center"
-      height="100%"
-      minHeight="400px"
-    >
-      <Loader>{message}</Loader>
-    </Flex>
-  </Main>
-);
-
-export default PageLoader;
+if (isLoading) return <Page.Loading />;            // optional children = announced label
+if (error) return <Page.Error />;
+if (!canRead) return <Page.NoPermissions />;
+if (items.length === 0) return <Page.NoData />;
 ```
+
+For a loader inside a section of the page, use `<Loader small>Loading…</Loader>`.
 
 ### Skeleton Loading
 
@@ -1664,7 +1620,8 @@ export { SkeletonLine, TableRowSkeleton, CardSkeleton };
 
 ```tsx
 import { EmptyStateLayout, Button, Box } from '@strapi/design-system';
-import { Plus, EmptyDocuments } from '@strapi/icons';
+import { Plus } from '@strapi/icons';
+import { EmptyDocuments } from '@strapi/icons/symbols'; // illustrations live in the /symbols entry
 
 interface EmptyStateProps {
   title: string;
@@ -1738,13 +1695,13 @@ export default NoSearchResults;
 | Pattern | Use Case | Key Components |
 |---------|----------|----------------|
 | Data Table | Displaying lists of items | Table, Thead, Tbody, Tr, Td, Th |
-| Form with Validation | User input with errors | Field, TextInput, Select, Toggle |
+| Form with Validation | User input with errors | Field, TextInput, SingleSelect, Toggle |
 | Confirmation Dialog | Destructive actions | Dialog, Button (variant="danger") |
 | Form Modal | Create/Edit in overlay | Modal, Field, TextInput |
-| Settings Page | Plugin configuration | Main, Card, Grid, Toggle |
+| Settings Page | Plugin configuration | Page.Main, Layouts.Header, Card, Grid, Toggle |
 | Dashboard | Statistics overview | Card, Grid, Typography |
-| Content Manager Panel | Edit view integration | Box, Card, unstable_useContentManagerContext |
+| Content Manager Panel | Edit view integration | `addEditViewSidePanel`, panel props (`model`, `documentId`) |
 | CRUD Hook | Data operations | useQuery, useMutation, useFetchClient |
 | Error Handling | API failures | Alert, ErrorBoundary |
-| Loading States | Async operations | Loader, Skeleton |
+| Loading States | Async operations | Page.Loading, Loader, Skeleton |
 | Empty States | No data scenarios | EmptyStateLayout |
