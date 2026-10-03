@@ -17,6 +17,8 @@ and noise.
       themselves (config arrives as an argument).
 - [ ] Data access goes through a port the plugin owns, not `strapi.documents` scattered
       through logic.
+- [ ] Plugin code doesn't use `strapi.entityService` or `strapi.query` (both deprecated in
+      v5): Document Service, or `strapi.db.query` for low-level row access.
 
 ## 2. Mocks — are they telling the truth?
 

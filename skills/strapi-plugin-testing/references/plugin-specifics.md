@@ -45,18 +45,20 @@ Keep both thin: they call named functions (`registerDocumentMiddleware(strapi)`,
 watch based on config) is a pure function with unit tests.
 
 **Bootstrap idempotence** is an integration test, because Strapi restarts run bootstrap
-again against existing data:
+again against existing data. Prove it with a real restart on the same database file, not
+by importing `server/src` and calling `bootstrap` by hand (that runs source, not the built
+entry, and Strapi refuses a second `strapi.plugin(x).bootstrap()` call anyway):
 
 ```ts
-import server from '../../server/src';
-
-it('bootstrap twice changes nothing', async () => {
-  const strapi = await getStrapi();             // already bootstrapped once by boot
-  const before = await snapshotPluginState(strapi);  // settings rows, permissions, index size
-  await server.bootstrap({ strapi });
+it('a restart changes nothing', async () => {
+  const before = await snapshotPluginState(await getStrapi()); // settings rows, permissions, index size
+  await stopStrapi();
+  const strapi = await getStrapi();             // boots again against the same SQLite file
   expect(await snapshotPluginState(strapi)).toEqual(before);
 });
 ```
+
+This needs a file database, not `:memory:`.
 
 ## 3. Config
 
@@ -83,7 +85,10 @@ If a controller has an `if` about business rules, extract it.
 
 Content-API routes are mounted under `/api/<plugin-name>/…` and are closed by default
 (users-permissions decides); admin routes are under `/<plugin-name>/…` and need an admin
-JWT plus any `admin::hasPermissions` policy. Check the actual prefix in your fixture app.
+token plus any `admin::hasPermissions` policy. Routes exported as a plain array default to
+`type: 'admin'`; a router can override `prefix`, and the host can change `/api`
+(`config/api` `rest.prefix`). Assert what is actually mounted with
+`strapi.server.listRoutes()` rather than guessing.
 
 Prove at integration, over HTTP:
 - **Route exposure** — each declared route answers at its path with the right method.
@@ -96,6 +101,8 @@ const matrix = [
   { route: 'POST /router/rebuild',    as: 'public',        expect: 401 },
   { route: 'POST /router/rebuild',    as: 'editor',        expect: 403 },
   { route: 'POST /router/rebuild',    as: 'super-admin',   expect: 200 },
+  { route: 'GET /api/router/resolve', as: 'api-token',     expect: 200 },  // content-API token
+  { route: 'POST /router/rebuild',    as: 'admin-token',   expect: 200 },  // admin API token
 ];
 it.each(matrix)('$as → $route = $expect', async ({ route, as, expect: status }) => {
   const [method, path] = route.split(' ');
@@ -104,6 +111,15 @@ it.each(matrix)('$as → $route = $expect', async ({ route, as, expect: status }
 });
 ```
 
+`public → 200` only holds once the harness grants the Public role that action (update
+the role's permissions through users-permissions' services at boot); the closed default
+is itself a row worth keeping.
+
+- **Request/response schemas** → routes can declare zod `request` (query, params, body)
+and `response` schemas; when they exist, they are the contract — assert responses parse.
+Run the fixture app with `rest.strictParams` and `documents.strictParams` on in
+`config/api`, so you prove the plugin works for hosts that enable them (custom query
+params must be registered with `strapi.contentAPI.addQueryParams` / `addInputParams`).
 - **Custom policy logic** → if it decides something, extract the decision as a pure
   function (unit); prove the policy is attached and enforced via the matrix.
 
@@ -130,9 +146,11 @@ Split each hook into:
 
 What integration must prove, against real Strapi:
 - The hook fires for the actions you depend on: `create`, `update`, `publish`,
-  `unpublish`, `delete`, `discardDraft` — **check each**, don't assume which actions a
-  host operation triggers (e.g. whether `create` with `status: 'published'` also fires
-  `publish` in your version).
+  `unpublish`, `delete`, `discardDraft`, `clone` — **check each**, don't assume which
+  actions a host operation triggers. Known trap (5.x): `create`/`update` with
+  `status: 'published'` publish internally, so the middleware sees only `create`/`update`
+  with `params.status === 'published'`, never a `publish` action. And `publish`,
+  `unpublish`, `discardDraft` don't exist on types without draft & publish.
 - **Hook scope**: it does nothing for UIDs and actions outside its scope. Create and
   publish a document of an unrelated fixture type and assert the plugin's state is untouched.
 - Drafts never leak into published-only state; each locale is handled separately.
@@ -150,8 +168,10 @@ What integration must prove, against real Strapi:
 ## 8. Admin side (kept light in V1)
 
 - Pure helpers (formatters, view-model mappers, reducers) → unit tests.
-- Components: only where they hold real logic; render with the API mocked at the
-  plugin's own fetch wrapper, never `@strapi/admin` internals.
+- Components: only where they hold real logic. Render with Strapi's helpers from
+  `@strapi/strapi/admin/test` (`render`, `renderHook`, `screen`, and an msw `server`),
+  which supply the admin providers. Mock the API at the network level (`server.use(...)`),
+  since plugins fetch through `useFetchClient`; never mock `@strapi/admin` internals.
 - Admin API endpoints are server routes — covered by the permission matrix, not by
   admin-side tests.
 
@@ -169,7 +189,10 @@ plugin, versioned with it, and reviewed like code. In plugin monorepos it is oft
 - **Plugin loaded as a host would**: `config/plugins.ts` enables the plugin and resolves
   it through its package entry (built output / `exports`), not by importing `src/`.
 - **Test database**: a disposable SQLite file per run (or the project's test DB).
-  Configured via `config/env/test/database.ts` so dev data is never touched.
+  Configured via `config/env/test/database.ts` so dev data is never touched. `:memory:`
+  (the official guide's default) is faster but can't prove restart behaviour. Delete a
+  stale `dist/` from `strapi develop` before tests: its compiled `config` can override the
+  test database config.
 - **When the plugin lives inside a host backend** (`src/plugins/<name>`), the fixture app
   still sits next to the plugin and points at it; don't run plugin integration tests
   against the host app, which drags its schemas, data and other plugins in.
@@ -188,6 +211,10 @@ const appDir = path.resolve(__dirname, '../../fixture-app');
 
 export async function getStrapi() {
   if (!instance) {
+    // compileStrapi builds dist/, which is what lets TS config files load at all
+    // (the runtime config loader only reads .js/.json). It process.exit(1)s on type
+    // errors, killing the test worker silently: run `tsc` separately, or pass
+    // { appDir, ignoreDiagnostics: true }.
     const ctx = await compileStrapi({ appDir });
     instance = await createStrapi(ctx).load();
     instance.server.mount();
@@ -205,16 +232,30 @@ export const server = () => instance.server.httpServer;
 ```
 
 What the harness must provide:
-- **Boot once per worker**, not per test. Strapi is a process-wide singleton: run
-  integration files in a single worker (`--runInBand` / `poolOptions.forks.singleFork`)
-  or give each worker its own DB file.
+- **Env**: boot needs `APP_KEYS`, `ADMIN_JWT_SECRET`, `API_TOKEN_SALT`,
+  `TRANSFER_TOKEN_SALT`, `JWT_SECRET` and `ENCRYPTION_KEY` (any test values), plus
+  `STRAPI_DISABLE_CRON=true`. Set them in the test runner's setup file, not the shell.
+- **Boot once per file**, not per test, and stop it: every integration file has
+  `afterAll(stopStrapi)`. Jest and Vitest (default `isolate: true`) give each file its
+  own module registry, so the module-level `instance` above does *not* survive across
+  files; without `stopStrapi` the old instance leaks its DB connection. Strapi is a
+  process-wide singleton: run files serially (Jest `--runInBand`, Vitest
+  `fileParallelism: false`) or give each worker its own DB file. To share one boot
+  across files, use Vitest `isolate: false`, or the official guide's single entry
+  (`tests/app.test.js` boots once and `require`s the other test files).
 - **Reset** between tests: delete documents of the fixture types (and the plugin's own
   types) through `strapi.db.query(uid).deleteMany({})`. Resetting is not faking.
 - **Factories**: `createPage({ slug, locale, status })` via `strapi.documents(uid).create`
   and `.publish`. Factories use the real API and return real documents.
-- **Auth helpers**: `authFor('public' | 'authenticated' | 'editor' | 'super-admin')`
-  returning headers — users-permissions JWTs for content-API roles, admin JWTs for admin
-  roles, created through Strapi's own services.
+- **Auth helpers**: `authFor('public' | 'authenticated' | 'editor' | 'super-admin' | …)`
+  returning headers, created through Strapi itself:
+  - content-API roles: `await strapi.plugin('users-permissions').service('jwt').issue({ id })`
+    (always `await`: it is async when `jwtManagement: 'refresh'`);
+  - admin roles: admin auth is session-based, so log in for real (`POST /admin/login`,
+    read `body.data.token`) or use `strapi.sessionManager('admin')`. There is no
+    `createJwtToken` any more;
+  - API tokens: `strapi.service('admin::api-token-content-api')` / `'admin::api-token-admin'`
+    (the plain `'api-token'` service is deprecated).
 - **Speed**: the integration loop must stay fast enough that agents actually run it. If a
   boot takes too long, fix the harness (smaller fixture app, SQLite, single boot), don't
   skip the layer.
@@ -222,7 +263,12 @@ What the harness must provide:
 ## 11. Package and compatibility
 
 - `peerDependencies` declares the supported `@strapi/strapi` range; the fixture app pins
-  one version inside it. A compatibility matrix across versions is out of V1.
+  one version inside it. A compatibility matrix across versions is out of V1. CI runs on
+  a Node version Strapi supports (5.56: `>=20 <=26`; docs recommend even LTS releases).
 - What you ship is what you test: the fixture app should consume the plugin's built
   package entries. Full packed-tarball tests are a later step; don't let the fixture app
   import private source paths in the meantime.
+- Because the fixture app loads `dist`, run `strapi-plugin build` before the integration
+  suite (or `strapi-plugin watch` while developing), or you are testing a stale build.
+  `strapi-plugin verify` checks the package output before publishing; `watch:link`
+  (yalc) is for linking into a separate host app, not needed for an in-repo fixture app.
