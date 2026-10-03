@@ -20,13 +20,13 @@ You have access to Context7 for verifying component APIs and patterns against th
 
 **Pre-resolved library IDs (skip resolve-library-id for these):**
 - `/strapi/design-system` — Strapi Design System v2 component docs
-- `/strapi/documentation` — Official Strapi v5 docs (for admin hooks like `useFetchClient`, `useNotification`, `Layouts`, `Page`)
+- `/strapi/documentation` — Official Strapi v5 docs (for admin APIs like `getFetchClient`, `useNotification`, `Layouts`, `Page`)
 
 **Example queries:**
 - `query-docs("/strapi/design-system", "Table component props columns rows")` — verify Table API
 - `query-docs("/strapi/design-system", "Field compound component Label Hint Error")` — check Field pattern
 - `query-docs("/strapi/design-system", "Modal Root Content Header Body Footer")` — verify Modal slots
-- `query-docs("/strapi/documentation", "admin panel useFetchClient useNotification hooks")` — check admin hooks
+- `query-docs("/strapi/documentation", "admin panel getFetchClient useNotification")` — check admin APIs
 
 **Important:** The patterns in this skill's `patterns.md` and `examples.md` are your primary reference. Use Context7 to **supplement and verify**, not as a first resort — it adds latency. Prefer the bundled patterns for common operations.
 
@@ -47,7 +47,7 @@ Then implement working code (React + TypeScript) that is:
 - Built exclusively with `@strapi/design-system` components
 - Accessible and keyboard-navigable
 - Consistent with Strapi's visual language
-- Properly integrated with Strapi admin hooks (`useFetchClient`, `useNotification`, …) and, if you use it, the plugin's own TanStack Query client
+- Properly integrated with Strapi admin hooks (`useNotification`, `useRBAC`, …), with data loaded through feature hooks (see Data Fetching Pattern) and the plugin's one shared TanStack Query client
 
 ## Strapi Design System v2 Guidelines
 
@@ -208,19 +208,29 @@ The admin ships a light and a dark theme. Use only semantic theme tokens through
 
 ### Data Fetching Pattern
 
-Fetch through Strapi's `useFetchClient` (it adds the admin auth and base URL):
+Components never fetch. Data goes **component → feature hook → service → `getFetchClient()`**, per [strapi-plugin-dev/fullstack-standards.md](../strapi-plugin-dev/fullstack-standards.md) and the `fullstack-standards:data-layer` skill:
+
+- **Feature hook** — `admin/src/features/<feature>/hooks/use-<resource>.ts`: TanStack Query v5 `useQuery`/`useMutation`, keys from `admin/src/lib/query-keys.ts`; every mutation invalidates `queryKeys.<resource>.all`, then calls the caller's `onSuccess`/`onError`.
+- **Service** — `admin/src/features/<feature>/services/<resource>.service.ts`: plain async functions that call `getFetchClient()` from `@strapi/strapi/admin` inside each function, unwrap the response and return domain types; `FetchError` propagates.
+
+A component imports hooks only, and triggers its own toasts from the hook callbacks:
 
 ```tsx
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification, useAPIErrorHandler } from '@strapi/strapi/admin';
+import { useNotification, useAPIErrorHandler, type FetchError } from '@strapi/strapi/admin';
+import { useArticles, useDeleteArticle } from '../features/articles/hooks/use-articles';
 
-const { get, post, put, del } = useFetchClient();
 const { toggleNotification } = useNotification();
 // toggleNotification({ type: 'success' | 'info' | 'warning' | 'danger', message, title?, link?, timeout? })
 const { formatAPIError } = useAPIErrorHandler();
+
+const { data, isLoading } = useArticles({ page, pageSize });
+const deleteArticle = useDeleteArticle({
+  onSuccess: () => toggleNotification({ type: 'success', message: 'Deleted' }),
+  onError: (error) => toggleNotification({ type: 'danger', message: formatAPIError(error as FetchError) }),
+});
 ```
 
-**The admin does NOT provide a TanStack Query client** (it uses `react-query` v3 and Redux internally). If you use `@tanstack/react-query`, add it to your plugin's `dependencies` and wrap **every tree you render** in your own `QueryClientProvider` — your plugin pages *and* each component injected into the Content Manager (side panels, injection zones), which render outside your `App`. Otherwise `useQuery` throws "No QueryClient set". For a one-off request, calling `useFetchClient` inside `useEffect` is fine.
+**The admin does NOT provide a TanStack Query client** (it uses `react-query` v3 and Redux internally). Add `@tanstack/react-query` to your plugin's `dependencies` and wrap **every tree you render** in a `QueryClientProvider` — your plugin pages *and* each component injected into the Content Manager (side panels, injection zones), which render outside your `App`. Otherwise `useQuery` throws "No QueryClient set". Every provider gets the **same** instance, `import { queryClient } from '../lib/query-client'` — never a `new QueryClient()` per tree, or a mutation in a side panel cannot invalidate the list on a plugin page.
 
 ### Permission-Gated UI
 

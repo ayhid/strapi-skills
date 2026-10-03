@@ -935,24 +935,18 @@ import {
   Grid,
 } from '@strapi/design-system';
 import { Check } from '@strapi/icons';
-// Requires the plugin's own <QueryClientProvider> above this page —
-// the Strapi admin does not provide a TanStack Query client.
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Layouts, useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { Page, Layouts, useNotification } from '@strapi/strapi/admin';
 import { useState, useEffect } from 'react';
-
-interface PluginSettings {
-  apiKey: string;
-  isEnabled: boolean;
-  webhookUrl: string;
-}
-
-const PLUGIN_ID = 'my-plugin';
+// hooks: features/settings/hooks/use-settings.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+// Requires the plugin's shared <QueryClientProvider client={queryClient}> above this page.
+import {
+  useSettings,
+  useSaveSettings,
+  type PluginSettings,
+} from '../features/settings/hooks/use-settings';
 
 const SettingsPage = () => {
-  const { get, put } = useFetchClient();
   const { toggleNotification } = useNotification();
-  const queryClient = useQueryClient();
 
   const [settings, setSettings] = useState<PluginSettings>({
     apiKey: '',
@@ -961,13 +955,7 @@ const SettingsPage = () => {
   });
 
   // Fetch settings
-  const { data, isLoading, error } = useQuery({
-    queryKey: [PLUGIN_ID, 'settings'],
-    queryFn: async () => {
-      const { data } = await get(`/${PLUGIN_ID}/settings`);
-      return data as PluginSettings;
-    },
-  });
+  const { data, isLoading, error } = useSettings();
 
   // Update local state when data loads
   useEffect(() => {
@@ -976,14 +964,9 @@ const SettingsPage = () => {
     }
   }, [data]);
 
-  // Save mutation
-  const saveMutation = useMutation({
-    mutationFn: async (newSettings: PluginSettings) => {
-      const { data } = await put(`/${PLUGIN_ID}/settings`, newSettings);
-      return data;
-    },
+  // Save mutation (the hook invalidates the settings keys)
+  const saveMutation = useSaveSettings({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'settings'] });
       toggleNotification({
         type: 'success',
         message: 'Settings saved successfully',
@@ -1117,15 +1100,10 @@ export default SettingsPage;
 
 ```tsx
 import { Flex, Typography, Card, Grid } from '@strapi/design-system';
-import { useQuery } from '@tanstack/react-query'; // needs the plugin's own QueryClientProvider
-import { Page, Layouts, useFetchClient } from '@strapi/strapi/admin';
-
-interface Stats {
-  totalItems: number;
-  publishedItems: number;
-  draftItems: number;
-  recentActivity: number;
-}
+import { Page, Layouts } from '@strapi/strapi/admin';
+// hooks: features/stats/hooks/use-stats.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+// Needs the plugin's shared QueryClientProvider above this page.
+import { useStats } from '../features/stats/hooks/use-stats';
 
 interface StatCardProps {
   label: string;
@@ -1147,15 +1125,7 @@ const StatCard = ({ label, value, color = 'primary600' }: StatCardProps) => (
 );
 
 const Dashboard = () => {
-  const { get } = useFetchClient();
-
-  const { data: stats, isLoading, error } = useQuery({
-    queryKey: ['my-plugin', 'stats'],
-    queryFn: async () => {
-      const { data } = await get('/my-plugin/stats');
-      return data as Stats;
-    },
-  });
+  const { data: stats, isLoading, error } = useStats();
 
   if (isLoading) {
     return <Page.Loading>Loading statistics...</Page.Loading>;
@@ -1216,30 +1186,23 @@ function that receives the edit-view context as props (`model`, `documentId`, `d
 `unstable_useContentManagerContext`.
 
 Panels render inside the Content Manager, **outside your plugin's `App`**, so anything that needs
-a provider (e.g. TanStack Query's `QueryClientProvider`) must be wrapped here too.
+a provider (e.g. TanStack Query's `QueryClientProvider`) must be wrapped here too — with the
+plugin's one shared `queryClient`, so mutations here invalidate the same cache as your pages.
 
 ```tsx
 // admin/src/components/RelatedPanel.tsx
 import { Box, Flex, Typography, Button, Loader } from '@strapi/design-system';
 import { Plus } from '@strapi/icons';
-import { useFetchClient } from '@strapi/strapi/admin';
 // Type-only import: add @strapi/content-manager to devDependencies
 import type { PanelComponent, PanelComponentProps } from '@strapi/content-manager/strapi-admin';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-
-const queryClient = new QueryClient();
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '../lib/query-client';
+// hooks: features/related/hooks/use-related.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+// The hook sets `enabled: Boolean(documentId)` — documentId is undefined while creating an entry.
+import { useRelated } from '../features/related/hooks/use-related';
 
 const RelatedContent = ({ model, documentId }: PanelComponentProps) => {
-  const { get } = useFetchClient();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['my-plugin', 'related', model, documentId],
-    queryFn: async () => {
-      const { data } = await get(`/my-plugin/related/${model}/${documentId}`);
-      return data;
-    },
-    enabled: !!documentId, // undefined while creating a new entry
-  });
+  const { data, isLoading } = useRelated(model, documentId);
 
   if (!documentId) {
     return (
@@ -1309,18 +1272,18 @@ export default {
 ### Providing a Query Client
 
 The Strapi admin uses `react-query` v3 internally and does **not** expose a TanStack Query v5
-client. If you use `@tanstack/react-query`, add it to your plugin's `dependencies` and provide your
-own client around your plugin routes (and around every component you inject into the Content
-Manager — see the side panel pattern above):
+client. Add `@tanstack/react-query` to your plugin's `dependencies` and provide **one shared**
+client (`admin/src/lib/query-client.ts`) around your plugin routes and around every component you
+inject into the Content Manager — see the side panel pattern above. Never `new QueryClient()` per
+tree: separate caches cannot invalidate each other.
 
 ```tsx
 // admin/src/pages/App.tsx
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Routes, Route } from 'react-router-dom';
 import { Page } from '@strapi/strapi/admin';
+import { queryClient } from '../lib/query-client'; // the plugin's single instance
 import { HomePage } from './HomePage';
-
-const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -1334,114 +1297,110 @@ const App = () => (
 export default App;
 ```
 
-### Custom Hook for CRUD Operations
+### Feature Hook + Service for CRUD Operations
 
-```tsx
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+Components never call `getFetchClient`, `useQuery` or `useMutation`. Data goes component → feature
+hook → service → `getFetchClient()`, per
+[strapi-plugin-dev/fullstack-standards.md](../strapi-plugin-dev/fullstack-standards.md) and the
+`fullstack-standards:data-layer` skill. Shown once here; the other examples import hooks shaped
+like these.
 
-interface Item {
-  id: number;
-  documentId: string;
-  name: string;
+```ts
+// admin/src/lib/query-keys.ts
+export const queryKeys = {
+  items: {
+    all: ['item'] as const,
+    list: () => [...queryKeys.items.all, 'list'] as const,
+  },
+} as const;
+```
+
+```ts
+// admin/src/features/items/services/items.service.ts
+import { getFetchClient } from '@strapi/strapi/admin';
+
+export interface Item { documentId: string; name: string }
+export type ItemInput = Pick<Item, 'name'>;
+
+// getFetchClient() inside each function; unwrap `{ data }`; let FetchError propagate.
+export const itemsService = {
+  list: async (): Promise<Item[]> => {
+    const { get } = getFetchClient();
+    const res = await get<{ data: Item[] }>('/my-plugin/items');
+    return res.data.data;
+  },
+  create: async (input: ItemInput): Promise<Item> => {
+    const { post } = getFetchClient();
+    const res = await post<{ data: Item }>('/my-plugin/items', { data: input });
+    return res.data.data;
+  },
+  update: async (documentId: string, input: Partial<ItemInput>): Promise<Item> => {
+    const { put } = getFetchClient();
+    const res = await put<{ data: Item }>(`/my-plugin/items/${documentId}`, { data: input });
+    return res.data.data;
+  },
+  remove: async (documentId: string): Promise<void> => {
+    const { del } = getFetchClient();
+    await del(`/my-plugin/items/${documentId}`);
+  },
+};
+```
+
+```ts
+// admin/src/features/items/hooks/use-items.ts
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/query-keys';
+import { itemsService, type Item, type ItemInput } from '../services/items.service';
+
+export type { Item, ItemInput };
+
+interface Callbacks<T> { onSuccess?: (result: T) => void; onError?: (error: Error) => void }
+
+export function useItems() {
+  return useQuery({ queryKey: queryKeys.items.list(), queryFn: itemsService.list });
 }
 
-const PLUGIN_ID = 'my-plugin';
-
-export const useItems = () => {
-  const { get, post, put, del } = useFetchClient();
-  const { toggleNotification } = useNotification();
+// Every mutation invalidates the resource root, then hands control back to the caller.
+function useItemMutation<V, R>(fn: (vars: V) => Promise<R>, callbacks: Callbacks<R>) {
   const queryClient = useQueryClient();
-
-  // Fetch all items
-  const query = useQuery({
-    queryKey: [PLUGIN_ID, 'items'],
-    queryFn: async () => {
-      const { data } = await get(`/${PLUGIN_ID}/items`);
-      return data as Item[];
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.items.all });
+      callbacks.onSuccess?.(result);
     },
+    onError: callbacks.onError,
   });
+}
 
-  // Create item
-  const createMutation = useMutation({
-    mutationFn: async (newItem: Omit<Item, 'id' | 'documentId'>) => {
-      const { data } = await post(`/${PLUGIN_ID}/items`, newItem);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'items'] });
-      toggleNotification({
-        type: 'success',
-        message: 'Item created successfully',
-      });
-    },
-    onError: (error: Error) => {
-      toggleNotification({
-        type: 'danger',
-        message: error.message || 'Failed to create item',
-      });
-    },
-  });
+export const useCreateItem = (callbacks: Callbacks<Item> = {}) =>
+  useItemMutation((input: ItemInput) => itemsService.create(input), callbacks);
 
-  // Update item
-  const updateMutation = useMutation({
-    mutationFn: async ({
-      documentId,
-      data: updateData,
-    }: {
-      documentId: string;
-      data: Partial<Item>;
-    }) => {
-      const { data } = await put(`/${PLUGIN_ID}/items/${documentId}`, updateData);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'items'] });
-      toggleNotification({
-        type: 'success',
-        message: 'Item updated successfully',
-      });
-    },
-    onError: (error: Error) => {
-      toggleNotification({
-        type: 'danger',
-        message: error.message || 'Failed to update item',
-      });
-    },
-  });
+export const useUpdateItem = (callbacks: Callbacks<Item> = {}) =>
+  useItemMutation(
+    ({ documentId, data }: { documentId: string; data: Partial<ItemInput> }) =>
+      itemsService.update(documentId, data),
+    callbacks,
+  );
 
-  // Delete item
-  const deleteMutation = useMutation({
-    mutationFn: async (documentId: string) => {
-      await del(`/${PLUGIN_ID}/items/${documentId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'items'] });
-      toggleNotification({
-        type: 'success',
-        message: 'Item deleted successfully',
-      });
-    },
-    onError: (error: Error) => {
-      toggleNotification({
-        type: 'danger',
-        message: error.message || 'Failed to delete item',
-      });
-    },
-  });
+export const useDeleteItem = (callbacks: Callbacks<void> = {}) =>
+  useItemMutation((documentId: string) => itemsService.remove(documentId), callbacks);
+```
 
-  return {
-    items: query.data || [],
-    isLoading: query.isLoading,
-    error: query.error,
-    createItem: createMutation.mutate,
-    updateItem: updateMutation.mutate,
-    deleteItem: deleteMutation.mutate,
-    isCreating: createMutation.isPending,
-    isUpdating: updateMutation.isPending,
-    isDeleting: deleteMutation.isPending,
-  };
-};
+The component owns the user-facing messages:
+
+```tsx
+import { useNotification } from '@strapi/strapi/admin';
+import { useDeleteItem, useItems } from '../features/items/hooks/use-items';
+
+const { toggleNotification } = useNotification();
+const { data: items = [], isLoading } = useItems();
+const deleteItem = useDeleteItem({
+  onSuccess: () => toggleNotification({ type: 'success', message: 'Item deleted successfully' }),
+  onError: (error) =>
+    toggleNotification({ type: 'danger', message: error.message || 'Failed to delete item' }),
+});
+// deleteItem.mutate(documentId); deleteItem.isPending
 ```
 
 ---
@@ -1701,7 +1660,7 @@ export default NoSearchResults;
 | Settings Page | Plugin configuration | Page.Main, Layouts.Header, Card, Grid, Toggle |
 | Dashboard | Statistics overview | Card, Grid, Typography |
 | Content Manager Panel | Edit view integration | `addEditViewSidePanel`, panel props (`model`, `documentId`) |
-| CRUD Hook | Data operations | useQuery, useMutation, useFetchClient |
+| Feature Hook + Service | Data operations | `features/<f>/hooks/use-<r>.ts` (useQuery/useMutation, `queryKeys`) → `<r>.service.ts` (`getFetchClient`) |
 | Error Handling | API failures | Alert, ErrorBoundary |
 | Loading States | Async operations | Page.Loading, Loader, Skeleton |
 | Empty States | No data scenarios | EmptyStateLayout |

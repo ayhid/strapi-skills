@@ -45,8 +45,8 @@ export default {
 
   bootstrap(app: any) {
     // Side panel in the Content Manager edit view. TaskPanel returns { title, content }
-    // and wraps its content in its own QueryClientProvider (see patterns.md
-    // "Edit View Side Panel") — it renders outside the plugin's App.
+    // and wraps its content in a QueryClientProvider with the plugin's shared queryClient
+    // (see patterns.md "Edit View Side Panel") — it renders outside the plugin's App.
     app.getPlugin('content-manager').apis.addEditViewSidePanel([TaskPanel]);
   },
 
@@ -71,21 +71,14 @@ export default {
 // admin/src/pages/App.tsx
 import { Routes, Route } from 'react-router-dom';
 import { Page } from '@strapi/strapi/admin';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+// The plugin's single instance (defaults live in lib/query-client.ts); TaskPanel uses it too.
+import { queryClient } from '../lib/query-client';
 
 import HomePage from './HomePage';
 import TaskListPage from './TaskListPage';
 import TaskDetailPage from './TaskDetailPage';
 import SettingsPage from './SettingsPage';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
 
 const App = () => {
   return (
@@ -118,26 +111,12 @@ import {
 } from '@strapi/design-system';
 import { Link } from 'react-router-dom';
 import { Plus, Cog, File } from '@strapi/icons';
-import { useQuery } from '@tanstack/react-query';
-import { Page, Layouts, useFetchClient } from '@strapi/strapi/admin';
-import { PLUGIN_ID } from '../pluginId';
-
-interface Stats {
-  totalTasks: number;
-  completedTasks: number;
-  pendingTasks: number;
-}
+import { Page, Layouts } from '@strapi/strapi/admin';
+// hooks: features/tasks/hooks/use-task-stats.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+import { useTaskStats } from '../features/tasks/hooks/use-task-stats';
 
 const HomePage = () => {
-  const { get } = useFetchClient();
-
-  const { data: stats } = useQuery({
-    queryKey: [PLUGIN_ID, 'stats'],
-    queryFn: async () => {
-      const { data } = await get(`/${PLUGIN_ID}/stats`);
-      return data as Stats;
-    },
-  });
+  const { data: stats } = useTaskStats();
 
   return (
     <Page.Main>
@@ -277,35 +256,23 @@ import { Plus, Pencil, Trash, Eye } from '@strapi/icons';
 import { EmptyDocuments } from '@strapi/icons/symbols';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Page,
   Layouts,
   BackButton,
   SearchInput,
   Pagination,
-  useFetchClient,
   useNotification,
   useQueryParams,
 } from '@strapi/strapi/admin';
-import { PLUGIN_ID } from '../pluginId';
+// hooks: features/tasks/hooks/use-tasks.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+import { useTasks, useDeleteTask, type Task } from '../features/tasks/hooks/use-tasks';
 import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog';
 import CreateTaskModal from '../components/CreateTaskModal';
 
-interface Task {
-  id: number;
-  documentId: string;
-  name: string;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high';
-  createdAt: string;
-}
-
 const TaskListPage = () => {
   const navigate = useNavigate();
-  const { get, del } = useFetchClient();
   const { toggleNotification } = useNotification();
-  const queryClient = useQueryClient();
 
   // SearchInput writes `_q`, Pagination writes `page` / `pageSize` to the URL
   const [{ query }] = useQueryParams<{ _q?: string; page?: string; pageSize?: string }>();
@@ -316,28 +283,12 @@ const TaskListPage = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deleteTask, setDeleteTask] = useState<Task | null>(null);
 
-  // Fetch tasks
-  const { data, isLoading } = useQuery({
-    queryKey: [PLUGIN_ID, 'tasks', { search, page: currentPage, pageSize }],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        page: String(currentPage),
-        pageSize: String(pageSize),
-        ...(search && { _q: search }),
-      });
-      const { data } = await get(`/${PLUGIN_ID}/tasks?${params}`);
-      return data as { tasks: Task[]; total: number };
-    },
-  });
+  // Fetch tasks: resolves { tasks: Task[]; total: number }
+  const { data, isLoading } = useTasks({ search, page: currentPage, pageSize });
 
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: async (documentId: string) => {
-      await del(`/${PLUGIN_ID}/tasks/${documentId}`);
-    },
+  // Delete mutation (the hook invalidates queryKeys.tasks.all, stats included)
+  const deleteMutation = useDeleteTask({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'tasks'] });
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'stats'] });
       toggleNotification({
         type: 'success',
         message: 'Task deleted successfully',
@@ -544,9 +495,9 @@ import {
 } from '@strapi/design-system';
 import { Check } from '@strapi/icons';
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Layouts, BackButton, useFetchClient, useNotification } from '@strapi/strapi/admin';
-import { PLUGIN_ID } from '../pluginId';
+import { Page, Layouts, BackButton, useNotification } from '@strapi/strapi/admin';
+// hooks: features/settings/hooks/use-settings.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+import { useSettings, useSaveSettings } from '../features/settings/hooks/use-settings';
 
 interface GeneralSettings {
   defaultPriority: 'low' | 'medium' | 'high';
@@ -567,9 +518,7 @@ interface NotificationSettings {
 }
 
 const SettingsPage = () => {
-  const { get, put } = useFetchClient();
   const { toggleNotification } = useNotification();
-  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState('general');
   const [general, setGeneral] = useState<GeneralSettings>({
@@ -589,13 +538,7 @@ const SettingsPage = () => {
   });
 
   // Fetch all settings
-  const { data, isLoading, error } = useQuery({
-    queryKey: [PLUGIN_ID, 'settings'],
-    queryFn: async () => {
-      const { data } = await get(`/${PLUGIN_ID}/settings`);
-      return data;
-    },
-  });
+  const { data, isLoading, error } = useSettings();
 
   useEffect(() => {
     if (data) {
@@ -605,18 +548,9 @@ const SettingsPage = () => {
     }
   }, [data]);
 
-  // Save mutation
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await put(`/${PLUGIN_ID}/settings`, {
-        general,
-        integration,
-        notifications,
-      });
-      return data;
-    },
+  // Save mutation (the hook invalidates queryKeys.settings.all)
+  const saveMutation = useSaveSettings({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'settings'] });
       toggleNotification({
         type: 'success',
         message: 'Settings saved successfully',
@@ -647,7 +581,7 @@ const SettingsPage = () => {
         primaryAction={
           <Button
             startIcon={<Check />}
-            onClick={() => saveMutation.mutate()}
+            onClick={() => saveMutation.mutate({ general, integration, notifications })}
             loading={saveMutation.isPending}
           >
             Save
@@ -877,55 +811,30 @@ import {
 import { Plus, Trash, Download, Filter } from '@strapi/icons';
 import { EmptyDocuments } from '@strapi/icons/symbols';
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Layouts, useFetchClient, useNotification } from '@strapi/strapi/admin';
-
-interface DataItem {
-  id: number;
-  documentId: string;
-  name: string;
-  type: string;
-  status: 'active' | 'inactive' | 'archived';
-  createdAt: string;
-}
-
-interface Filters {
-  status: string;
-  type: string;
-}
-
-const PLUGIN_ID = 'data-manager';
+import { Page, Layouts, useNotification } from '@strapi/strapi/admin';
+// hooks: features/items/hooks/use-items.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+import {
+  useItems,
+  useBulkDeleteItems,
+  useExportItems,
+  type DataItem,
+  type ItemFilters,
+} from '../features/items/hooks/use-items';
 
 const DataManagementPage = () => {
-  const { get, del, post } = useFetchClient();
   const { toggleNotification } = useNotification();
-  const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [filters, setFilters] = useState<Filters>({ status: '', type: '' });
+  const [filters, setFilters] = useState<ItemFilters>({ status: '', type: '' });
   const [showFilters, setShowFilters] = useState(false);
 
   // Fetch data
-  const { data, isLoading } = useQuery({
-    queryKey: [PLUGIN_ID, 'items', { search, filters }],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (search) params.set('_q', search);
-      if (filters.status) params.set('status', filters.status);
-      if (filters.type) params.set('type', filters.type);
-      const { data } = await get(`/${PLUGIN_ID}/items?${params}`);
-      return data as DataItem[];
-    },
-  });
+  const { data, isLoading } = useItems({ search, ...filters });
 
-  // Bulk delete mutation
-  const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map((id) => del(`/${PLUGIN_ID}/items/${id}`)));
-    },
+  // Bulk delete mutation (the service routes each id through its own `remove`)
+  const bulkDeleteMutation = useBulkDeleteItems({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [PLUGIN_ID, 'items'] });
       toggleNotification({
         type: 'success',
         message: `${selectedIds.length} item(s) deleted`,
@@ -940,13 +849,9 @@ const DataManagementPage = () => {
     },
   });
 
-  // Export mutation
-  const exportMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await post(`/${PLUGIN_ID}/export`, { ids: selectedIds });
-      return data;
-    },
-    onSuccess: (data: { url: string }) => {
+  // Export mutation: resolves { url: string }
+  const exportMutation = useExportItems({
+    onSuccess: (data) => {
       window.open(data.url, '_blank');
       toggleNotification({
         type: 'success',
@@ -1094,7 +999,7 @@ const DataManagementPage = () => {
               <Button
                 variant="secondary"
                 startIcon={<Download />}
-                onClick={() => exportMutation.mutate()}
+                onClick={() => exportMutation.mutate(selectedIds)}
                 loading={exportMutation.isPending}
               >
                 Export
@@ -1211,21 +1116,18 @@ import {
 // Alias the icon: importing `File` would shadow the DOM `File` type used below
 import { Upload, Download, File as FileIcon } from '@strapi/icons';
 import { useState, useRef } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Page, Layouts, useFetchClient, useNotification } from '@strapi/strapi/admin';
-
-const PLUGIN_ID = 'data-manager';
-
-interface ImportResult {
-  success: number;
-  failed: number;
-  errors: string[];
-}
+import { Page, Layouts, useNotification } from '@strapi/strapi/admin';
+// hooks: features/transfer/hooks/use-transfer.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+import {
+  useImportData,
+  useExportData,
+  type ImportResult,
+} from '../features/transfer/hooks/use-transfer';
 
 const ImportExportPage = () => {
-  const { post, get } = useFetchClient();
   const { toggleNotification } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const progressTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Import state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -1243,38 +1145,19 @@ const ImportExportPage = () => {
     includeDrafts: false,
   });
 
-  // Import mutation
-  const importMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedFile) throw new Error('No file selected');
-
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('options', JSON.stringify(importOptions));
-
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setImportProgress((prev) => Math.min(prev + 10, 90));
-      }, 200);
-
-      try {
-        const { data } = await post(`/${PLUGIN_ID}/import`, formData);
-        clearInterval(progressInterval);
-        setImportProgress(100);
-        return data as ImportResult;
-      } catch (error) {
-        clearInterval(progressInterval);
-        throw error;
-      }
-    },
+  // Import mutation (the service builds the FormData and posts it)
+  const importMutation = useImportData({
     onSuccess: (result) => {
+      clearInterval(progressTimer.current);
+      setImportProgress(100);
       setImportResult(result);
       toggleNotification({
         type: 'success',
         message: `Import completed: ${result.success} items imported`,
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
+      clearInterval(progressTimer.current);
       setImportProgress(0);
       toggleNotification({
         type: 'danger',
@@ -1283,15 +1166,8 @@ const ImportExportPage = () => {
     },
   });
 
-  // Export mutation
-  const exportMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await post(`/${PLUGIN_ID}/export`, {
-        format: exportFormat,
-        options: exportOptions,
-      });
-      return data as { url: string; filename: string };
-    },
+  // Export mutation: resolves { url: string; filename: string }
+  const exportMutation = useExportData({
     onSuccess: (data) => {
       // Trigger download
       const link = document.createElement('a');
@@ -1324,9 +1200,14 @@ const ImportExportPage = () => {
   };
 
   const handleImport = () => {
+    if (!selectedFile) return;
     setImportProgress(0);
     setImportResult(null);
-    importMutation.mutate();
+    // Simulate progress until the request settles
+    progressTimer.current = setInterval(() => {
+      setImportProgress((prev) => Math.min(prev + 10, 90));
+    }, 200);
+    importMutation.mutate({ file: selectedFile, options: importOptions });
   };
 
   const resetImport = () => {
@@ -1539,7 +1420,7 @@ const ImportExportPage = () => {
                 </Field.Root>
 
                 <Button
-                  onClick={() => exportMutation.mutate()}
+                  onClick={() => exportMutation.mutate({ format: exportFormat, options: exportOptions })}
                   loading={exportMutation.isPending}
                   startIcon={<Download />}
                 >
@@ -1575,11 +1456,11 @@ import {
   SingleSelectOption,
   Badge,
 } from '@strapi/design-system';
-import { useQuery } from '@tanstack/react-query';
-import { Page, Layouts, useFetchClient } from '@strapi/strapi/admin';
+import { Page, Layouts } from '@strapi/strapi/admin';
 import { useState } from 'react';
-
-const PLUGIN_ID = 'analytics';
+// hooks: features/analytics/hooks/use-analytics.ts (service → getFetchClient), see strapi-plugin-dev/fullstack-standards.md
+// (the service returns the AnalyticsData shape below)
+import { useAnalytics } from '../features/analytics/hooks/use-analytics';
 
 interface AnalyticsData {
   overview: {
@@ -1672,16 +1553,9 @@ const StatCard = ({ label, value, trend, color = 'primary600' }: StatCardProps) 
 );
 
 const AnalyticsDashboard = () => {
-  const { get } = useFetchClient();
   const [timeRange, setTimeRange] = useState('7d');
 
-  const { data, isLoading } = useQuery({
-    queryKey: [PLUGIN_ID, 'analytics', timeRange],
-    queryFn: async () => {
-      const { data } = await get(`/${PLUGIN_ID}/analytics?range=${timeRange}`);
-      return data as AnalyticsData;
-    },
-  });
+  const { data, isLoading } = useAnalytics(timeRange);
 
   if (isLoading) {
     return <Page.Loading>Loading analytics...</Page.Loading>;
@@ -1859,6 +1733,6 @@ export default AnalyticsDashboard;
 | Data Tables | Table, Thead, Tbody, Tr, Td, Th | List display |
 | Forms | Field, TextInput, SingleSelect, Toggle | User input |
 | Navigation | Link, Button with tag prop | Routing |
-| State | TanStack Query (own QueryClientProvider), useState, useQueryParams | Data management |
+| State | Feature hooks (`features/<f>/hooks`, TanStack Query) → services (`getFetchClient`), one shared `queryClient` in every QueryClientProvider, useState, useQueryParams | Data management |
 | Feedback | Badge, Alert, Page.Loading / Page.Error | Status indication |
 | Dialogs | Modal, Dialog | Overlays |

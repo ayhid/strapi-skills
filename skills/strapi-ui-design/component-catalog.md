@@ -285,7 +285,7 @@ These are the most common false-import mistakes. They are **not** exported by
 `Layouts` import — that will not resolve.
 
 ```tsx
-import { Page, Layouts, BackButton, useRBAC, useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { Page, Layouts, BackButton, useRBAC, useNotification } from '@strapi/strapi/admin';
 ```
 
 - **`Page.Main`** — top-level page wrapper (`<main>` landmark). · **`Page.Title`** — document title · **`Page.Error` / `Page.NoPermissions` / `Page.Loading` / `Page.NoData`** — admin-standard states · **`Page.Protect`** — permission gate (pair with `useRBAC()`).
