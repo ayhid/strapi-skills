@@ -7,8 +7,8 @@
     "email": "ayoub.hidri@gmail.com",
     "url": "https://www.linkedin.com/in/ayoub-hidri-67a29428/"
   },
-  "homepage": "https://github.com/ayhid/strapi-plugin-testing",
-  "repository": "https://github.com/ayhid/strapi-plugin-testing",
+  "homepage": "https://github.com/ayhid/strapi-skills",
+  "repository": "https://github.com/ayhid/strapi-skills",
   "license": "MIT",
   "keywords": ["strapi", "strapi-v5", "plugin", "testing", "design-system", "cms"]
 }

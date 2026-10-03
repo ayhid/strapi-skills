@@ -24,7 +24,7 @@ The bundle also ships:
 In Claude Code:
 
 ```
-/plugin marketplace add ayhid/strapi-plugin-testing
+/plugin marketplace add ayhid/strapi-skills
 /plugin install strapi-skills@strapi-skills
 ```
 
