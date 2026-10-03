@@ -1,0 +1,9 @@
+{
+  "name": "strapi-plugin-redirects",
+  "version": "0.3.0",
+  "strapi": { "kind": "plugin", "name": "redirects" },
+  "exports": { "./strapi-server": "./dist/server/index.js" },
+  "scripts": { "build": "strapi-plugin build", "test": "jest" },
+  "peerDependencies": { "@strapi/strapi": "^5.0.0" },
+  "devDependencies": { "@strapi/sdk-plugin": "^5.2.0", "jest": "^29.7.0", "ts-jest": "^29.1.0", "typescript": "^5.4.0" }
+}

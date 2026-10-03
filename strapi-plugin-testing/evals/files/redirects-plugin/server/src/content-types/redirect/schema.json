@@ -1,0 +1,12 @@
+{
+  "kind": "collectionType",
+  "collectionName": "redirects",
+  "info": { "singularName": "redirect", "pluralName": "redirects", "displayName": "Redirect" },
+  "options": { "draftAndPublish": true },
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "from": { "type": "string", "required": true },
+    "to": { "type": "string", "required": true },
+    "statusCode": { "type": "integer" }
+  }
+}

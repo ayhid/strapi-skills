@@ -1,0 +1,54 @@
+{
+  "skill_name": "strapi-plugin-testing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We're about to start the route resolution slice of our Strapi v5 router plugin (it lives in src/plugins/router of our backend). Given a URL path, the plugin returns either the content entry, a redirect, or not found, so our Next.js frontend can render it. It has to support three locale strategies: prefix-all (/en/about, /fr/a-propos), prefix-except-default (/about, /fr/a-propos) and domain-per-locale (example.com/about, example.fr/a-propos). Routes are indexed when a page is published and removed on unpublish; drafts must never resolve; redirects can chain but must not loop. Can you write the implementation plan for this phase, including how each part gets tested? Save it as plan.md.",
+      "expected_output": "A plan.md where every behaviour is tagged with a layer and a proving test, pure logic (normalisation, locale strategies, resolution decision, redirect termination) at unit level with properties, Strapi-dependent behaviour (publish/unpublish indexing, drafts, per-locale) at integration in a fixture app, the Next.js response shape as a contract, and at most 1-2 E2E journeys.",
+      "files": [],
+      "assertions": [
+        "Every behaviour or task in the plan declares the test layer that proves it",
+        "Locale strategy build/parse logic is planned as unit tests (no Strapi)",
+        "Plan includes at least one property-based test for an invariant (idempotence, round-trip, totality or termination)",
+        "Redirect chain/loop termination is proven at unit level",
+        "Publish/unpublish indexing and drafts-never-resolve are proven by integration tests against a real Strapi instance (fixture app, real DB)",
+        "Plan does not propose mocking strapi.documents / DB queries to test data behaviour (drafts, locales, filters)",
+        "The response shape consumed by Next.js is treated as a contract with its own check",
+        "E2E is limited to at most two journeys"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "In the redirects plugin (evals/files/redirects-plugin, Strapi v5), add support for wildcard redirects: a `from` like `/blog/*` should match `/blog/anything/deep` and the captured part should be appended to `to` when `to` also ends with `/*` (so `/blog/*` -> `/news/*` sends `/blog/2024/hello` to `/news/2024/hello`). Exact matches must still win over wildcards, and the longest wildcard prefix wins if several match. Write the code and the tests. There's no node_modules so you can't run anything, just write the files.",
+      "expected_output": "Matching logic extracted from the controller into a framework-free domain module with unit tests (including precedence rules, probably properties); data access behind a port or adapter; integration tests against a fixture app for published/draft/locale behaviour and the route; the existing call-sequence controller test replaced or reworked.",
+      "files": [
+        "evals/files/redirects-plugin"
+      ],
+      "assertions": [
+        "Wildcard matching/precedence logic lives in a module that does not import @strapi/* or reference strapi",
+        "Controller no longer contains the matching logic (thin adapter)",
+        "Unit tests cover exact-beats-wildcard and longest-prefix-wins precedence",
+        "Unit tests for the matching logic do not fake strapi.documents or DB queries",
+        "An integration test boots a real Strapi (fixture app) for data-dependent behaviour (published-only, locale, or the HTTP route)",
+        "No test asserts findMany/documents was called with specific filters (call-sequence assertion removed or rewritten)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Another agent wrote these tests for the resolver in our Strapi v5 router plugin and they're all green. Can you review evals/files/review-target/route-resolver.test.ts before I merge? Write your review to review.md.",
+      "expected_output": "A review that flags faked Strapi data behaviour (findMany mock standing in for draft and locale filtering), call-sequence assertions, the tautological property that reimplements normalizePath, duplicated cases at E2E, log assertion noise, and recommends extraction plus integration tests in a fixture app and real invariants (idempotence).",
+      "files": [
+        "evals/files/review-target/route-resolver.test.ts"
+      ],
+      "assertions": [
+        "Flags that the findMany mock fakes Strapi data behaviour, so the drafts and locale tests prove nothing",
+        "Flags call-sequence assertions (toHaveBeenCalledWith on documents/findMany) as testing implementation",
+        "Flags the fast-check property as reimplementing normalizePath (tautological)",
+        "Proposes a real invariant such as idempotence instead",
+        "Flags the E2E cases as duplicating unit-level normalization cases",
+        "Recommends integration tests against a real Strapi/fixture app for drafts and locales",
+        "Flags the log.warn assertion as asserting implementation detail rather than outcome"
+      ]
+    }
+  ]
+}
