@@ -75,8 +75,8 @@ Only review files under `admin/src/` of a Strapi v5 plugin. Skip server-side or 
 ### Data
 
 - [ ] Uses `@tanstack/react-query` v5.
-- [ ] Uses `useFetchClient` (NOT raw `fetch`/`axios`).
-- [ ] Every tree using TanStack Query (pages and CM-injected panels) wraps the plugin's own `QueryClientProvider` — Strapi admin provides none.
+- [ ] Components get data from feature hooks only — no `useFetchClient`/`getFetchClient`, `useQuery`/`useMutation` or raw `fetch`/`axios` in a component (only services call `getFetchClient`; see `skills/strapi-plugin-dev/fullstack-standards.md`).
+- [ ] Every tree using TanStack Query (pages and CM-injected panels) wraps a `QueryClientProvider` given the plugin's one shared `queryClient` — Strapi admin provides none.
 
 ## Output Format
 

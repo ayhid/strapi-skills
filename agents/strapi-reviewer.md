@@ -32,8 +32,14 @@ Review only files under `server/src/` or `admin/src/` of a Strapi v5 plugin. Ski
 
 - [ ] Forms use `react-hook-form` + `zod`, NOT Formik/Yup or manual `useState`.
 - [ ] Data fetching uses `@tanstack/react-query` v5, NOT `react-query` v3 (that's Strapi admin's internal copy).
-- [ ] API calls use `useFetchClient()` or `getFetchClient()`, NOT raw `fetch`/`axios`.
-- [ ] Every tree that uses TanStack Query (plugin pages AND Content-Manager panels/injected components) is wrapped in the plugin's own `QueryClientProvider` — Strapi admin provides none for TanStack v5.
+- [ ] Data access is layered per `skills/strapi-plugin-dev/fullstack-standards.md`: components call feature hooks only (no `useQuery`/`useMutation`, `useFetchClient`/`getFetchClient` or query keys in a component); hooks call services; only services in `features/*/services/` call `getFetchClient()`. No raw `fetch`/`axios`.
+- [ ] Query keys come from `admin/src/lib/query-keys.ts`; every mutation invalidates its resource root.
+- [ ] Every tree that uses TanStack Query (plugin pages AND Content-Manager panels/injected components) is wrapped in a `QueryClientProvider` given the plugin's one shared `queryClient` from `admin/src/lib/query-client.ts` — Strapi admin provides none for TanStack v5, and a `new QueryClient()` per tree splits the cache.
+- [ ] Every component has a render test with its service mocked; every service has a test with `getFetchClient` mocked; no `renderHook` tests.
+
+### Server third parties
+
+- [ ] A provider SDK (mail, payments, storage, LLM…) is imported only by its adapter in `server/src/adapters/`, behind a port in `server/src/domain/`; no spec `jest.mock`s the SDK.
 - [ ] All UI uses `@strapi/design-system` v2 compound components — no native `<button>`, `<input>`, `<select>`, no `styled-components`, no `alert()`/`window.confirm()`, no hex colors / inline `style=`.
 - [ ] Permission-gated UI uses `useRBAC()` and `Page.Protect`.
 - [ ] `registerTrads()` exists if there's user-visible text.

@@ -1,13 +1,56 @@
 #!/usr/bin/env bash
-# PostToolUse hook: flag DS v2 anti-patterns in admin/src/**/*.tsx files.
+# PostToolUse hook: flag admin data-layer violations in admin/src/**/*.{ts,tsx,jsx}
+# and DS v2 anti-patterns in admin/src/**/*.{tsx,jsx}.
 set -euo pipefail
 
 payload="$(cat)"
 
 file_path="$(printf '%s' "$payload" | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
 [[ -z "$file_path" ]] && exit 0
-[[ "$file_path" != *"/admin/src/"*".tsx" && "$file_path" != *"/admin/src/"*".jsx" ]] && exit 0
+[[ "$file_path" != *"/admin/src/"*".ts" && "$file_path" != *"/admin/src/"*".tsx" && "$file_path" != *"/admin/src/"*".jsx" ]] && exit 0
 [[ ! -f "$file_path" ]] && exit 0
+
+# Data layer (strapi-plugin-dev/fullstack-standards.md): component → hook → service → getFetchClient.
+# Test files are exempt: they mock services and getFetchClient.
+data_issues=()
+case "$file_path" in
+  *.test.* | *.spec.* | */__tests__/*) ;;
+  *)
+    in_service=false; in_hook=false
+    [[ "$file_path" == */services/* || "$file_path" == *.service.ts ]] && in_service=true
+    [[ "$file_path" == */hooks/* ]] && in_hook=true
+
+    if grep -qE '\buseFetchClient\b' "$file_path"; then
+      data_issues+=("• \`useFetchClient\` — data goes through a feature service calling \`getFetchClient()\`; components and hooks never fetch")
+    fi
+    if ! $in_service && grep -qE '\bgetFetchClient\b' "$file_path"; then
+      data_issues+=("• \`getFetchClient\` outside \`features/*/services/\` — only services call the fetch client; move the request into the feature service")
+    fi
+    if ! $in_hook && grep -qE '\b(useQuery|useMutation|useInfiniteQuery|useSuspenseQuery)\(' "$file_path"; then
+      data_issues+=("• \`useQuery\`/\`useMutation\` outside \`features/*/hooks/\` — components call feature hooks only")
+    fi
+    if grep -qE 'queryKey:[[:space:]]*\[' "$file_path"; then
+      data_issues+=("• Inline \`queryKey: [...]\` — build keys with the factory in \`admin/src/lib/query-keys.ts\`")
+    fi
+    if [[ "$file_path" != */lib/query-client.ts ]] && grep -qE '\bnew QueryClient\(' "$file_path"; then
+      data_issues+=("• \`new QueryClient()\` — every provider uses the one shared \`queryClient\` from \`admin/src/lib/query-client.ts\`")
+    fi
+    ;;
+esac
+
+report_data_issues() {
+  [[ ${#data_issues[@]} -eq 0 ]] && return 1
+  {
+    echo "[strapi-plugin-dev] admin data-layer violations in $(basename "$file_path") (see skills/strapi-plugin-dev/fullstack-standards.md):"
+    printf '%s\n' "${data_issues[@]}"
+  } >&2
+}
+
+# The Design System checks below only apply to JSX files.
+if [[ "$file_path" == *.ts ]]; then
+  report_data_issues && exit 2
+  exit 0
+fi
 
 issues=()
 
@@ -91,13 +134,16 @@ if grep -qE "from ['\"]@strapi/design-system/[A-Za-z]" "$file_path"; then
   issues+=("• Path imports from \`@strapi/design-system/...\` — use root imports: \`from '@strapi/design-system'\`")
 fi
 
-if [[ ${#issues[@]} -eq 0 ]]; then
-  exit 0
+found=false
+report_data_issues && found=true
+
+if [[ ${#issues[@]} -gt 0 ]]; then
+  {
+    echo "[strapi-ui-design] DS v2 anti-patterns in $(basename "$file_path"):"
+    printf '%s\n' "${issues[@]}"
+  } >&2
+  found=true
 fi
 
-{
-  echo "[strapi-ui-design] DS v2 anti-patterns in $(basename "$file_path"):"
-  printf '%s\n' "${issues[@]}"
-} >&2
-
-exit 2
+$found && exit 2
+exit 0

@@ -12,8 +12,9 @@ Add a Content Manager edit-view side panel named `$1` to the current Strapi v5 p
 1. **Verify** this is a Strapi plugin and that `admin/src/` exists.
 
 2. **Create** `admin/src/components/$1.tsx` exporting a `PanelComponent` (type-only import from `@strapi/content-manager/strapi-admin`; add `@strapi/content-manager` to devDependencies). It receives the edit-view context as props (`documentId`, `document`, `model`, `collectionType`, `activeTab`, `meta`) and returns `{ title, content }`. The `content` must:
-   - Wrap itself in its own `QueryClientProvider` if it uses `@tanstack/react-query` (Strapi admin provides no TanStack v5 client, and side panels render inside the Content Manager, outside the plugin's pages).
-   - Use `useFetchClient()` for API calls.
+   - Wrap itself in a `QueryClientProvider` given the plugin's shared `queryClient` from `admin/src/lib/query-client.ts` if it uses `@tanstack/react-query` (Strapi admin provides no TanStack v5 client, and side panels render inside the Content Manager, outside the plugin's pages; a separate client would split the cache).
+   - Get data through feature hooks → services → `getFetchClient()`, per the skill's `fullstack-standards.md`: pass `model`/`documentId` from the props to the hook; never call `useFetchClient`/`useQuery` in the panel.
+   - Come with a render test for each component it adds (service module mocked) and a test for each new service (`getFetchClient` mocked).
    - Use only `@strapi/design-system` v2 compound components.
    - Use `react-hook-form` + `zod` for any forms.
 

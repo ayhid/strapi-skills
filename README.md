@@ -19,8 +19,27 @@ The bundle also ships:
 - **Commands**: `/strapi-skills:scaffold-plugin`, `add-content-type`, `add-cm-panel`,
   `verify`, `ui-component`, `ui-audit`.
 - **Hooks**: after each edit, checks for v5 server anti-patterns, invalid content-type
-  schemas and Design System violations in `admin/src/**/*.tsx`, plus Strapi context
-  injected into prompts.
+  schemas, admin data-layer violations and Design System violations in `admin/src`,
+  plus Strapi context injected into prompts.
+
+### Admin data layer: fullstack-standards
+
+A plugin's admin panel follows
+[fullstack-standards](https://github.com/ayhid/fullstack-standards): components call
+feature hooks, hooks call services, and only services call Strapi's `getFetchClient()`,
+the single entry point (there is no extra API-client wrapper). Every component is
+tested by rendering it with its service mocked, every service against a mocked
+`getFetchClient`, and third-party SDKs sit behind a port and one adapter.
+`skills/strapi-plugin-dev/fullstack-standards.md` maps those rules onto a plugin; the
+rules themselves come from the fullstack-standards skills, so install that plugin too:
+
+```
+/plugin marketplace add ayhid/fullstack-standards
+/plugin install fullstack-standards@fullstack-standards
+```
+
+`/strapi-skills:scaffold-plugin` writes `.claude/fullstack-standards.json`, which turns on
+its enforcement hooks for `admin/src` and `server/src`.
 
 ## Install
 
@@ -30,6 +49,8 @@ In Claude Code:
 /plugin marketplace add ayhid/strapi-skills
 /plugin install strapi-skills@strapi-skills
 ```
+
+Then install fullstack-standards as above.
 
 The rest of this page covers the newest skill, `strapi-plugin-testing`.
 

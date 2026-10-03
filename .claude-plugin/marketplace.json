@@ -10,7 +10,7 @@
     {
       "name": "strapi-skills",
       "source": "./",
-      "description": "Strapi v5 plugin bundle: plugin development, admin UI with Design System v2, and testing at the right level. Three skills, two reviewer agents, slash commands and edit-time checks.",
+      "description": "Strapi v5 plugin bundle: plugin development (admin data layer per fullstack-standards), admin UI with Design System v2, and testing at the right level. Three skills, two reviewer agents, slash commands and edit-time checks.",
       "version": "1.0.0",
       "category": "backend",
       "tags": [

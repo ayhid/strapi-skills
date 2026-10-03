@@ -20,6 +20,13 @@ Verify the Strapi v5 plugin in the current directory. Follow the strapi-plugin-d
    - `Select`/`Option` imported from `@strapi/design-system` (don't exist in DS v2 — use `SingleSelect`/`SingleSelectOption`)
    - `findMany(...)` destructured as `{ results, pagination }` (Document Service returns a plain array)
    - `alert(`, `window.confirm(` (should be `useNotification` / `Dialog`)
+   - `useFetchClient` anywhere, or `getFetchClient` outside `admin/src/features/*/services/` (only services call the fetch client)
+   - `useQuery(` / `useMutation(` outside `admin/src/features/*/hooks/`, and inline `queryKey: [` (keys come from `admin/src/lib/query-keys.ts`)
+   - `new QueryClient(` outside `admin/src/lib/query-client.ts` (one shared client)
+   - `renderHook(` in admin tests, or test files under `hooks/`
+   - A provider SDK (`stripe`, `@getbrevo/brevo`, `nodemailer`, `@aws-sdk/`, `openai`, …) imported in `server/src` outside a `*.adapter.ts`
+
+5. **If `.claude/fullstack-standards.json` exists** and the fullstack-standards plugin is installed, also run its audit and include the findings: `node <fullstack-standards plugin>/scripts/architecture/check-architecture.mjs --all .`
 
 3. **Validate** every `server/src/content-types/*/schema.json` has `kind`, `info.singularName`, `info.pluralName`, `collectionName`.
 

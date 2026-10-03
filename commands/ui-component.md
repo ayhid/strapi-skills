@@ -26,7 +26,8 @@ Scaffold an admin UI component of type `$1` (one of: `settings`, `table`, `form`
    - `Field.Root` for every input
    - `Modal.Root`/`Modal.Content`/`Modal.Header`/`Modal.Body`/`Modal.Footer` (NEVER `ModalLayout`)
    - `react-hook-form` + `zod` for forms
-   - `@tanstack/react-query` v5 + `useFetchClient` for data, under the plugin's own `QueryClientProvider` (Strapi admin doesn't provide one)
+   - `@tanstack/react-query` v5 for data, through feature hooks → services → `getFetchClient()` (strapi-plugin-dev's `fullstack-standards.md`); the component calls hooks only, under a `QueryClientProvider` given the plugin's shared `queryClient` (Strapi admin doesn't provide one)
+   - a render test next to the component, with its feature service mocked
    - `useNotification` for feedback
    - `useRBAC` if the page should be permission-gated
 

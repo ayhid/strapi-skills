@@ -33,7 +33,7 @@ fi
 cat <<'EOF'
 [strapi-plugin-dev] Detected Strapi v5 plugin context. When editing:
 • Server: use `strapi.documents(uid)` (Document Service API), not `entityService` or `query`.
-• Admin: use `@strapi/design-system` v2 compound components, `react-hook-form` + `zod`, and `@tanstack/react-query` v5 under the plugin's own `QueryClientProvider` (Strapi admin doesn't provide one).
+• Admin: use `@strapi/design-system` v2 compound components, `react-hook-form` + `zod`, and `@tanstack/react-query` v5 under a `QueryClientProvider` given the plugin's one shared `queryClient` (Strapi admin doesn't provide one). Data is layered per fullstack-standards: component → feature hook → service → `getFetchClient()` (strapi-plugin-dev/fullstack-standards.md).
 • Targets Strapi 5.x (latest 5.56): Node >=20 <=26, React 18, DS 2.2.x.
 • Load the strapi-plugin-dev and strapi-ui-design skills as needed for full patterns.
 EOF

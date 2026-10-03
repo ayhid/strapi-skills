@@ -24,6 +24,15 @@ Scaffold a new Strapi v5 plugin named `$1`. Follow the strapi-plugin-dev skill.
    - Create `admin/src/components/Initializer.tsx` (standard `setPlugin` pattern).
    - Split `server/src/routes/` into `admin/` and `content-api/` subdirectories.
    - Use `factories.createCoreService`, `factories.createCoreController`, `factories.createCoreRouter` for any generated CRUD scaffolding (see patterns.md).
+   - Lay out the admin data layer per the skill's `fullstack-standards.md`: `admin/src/lib/query-client.ts` (production defaults + the one shared `queryClient`), `admin/src/lib/query-keys.ts` (empty factory), and an `admin/src/features/` folder for `services/` (the only callers of `getFetchClient()`), `hooks/` and `components/`.
+   - Write `.claude/fullstack-standards.json` so the fullstack-standards plugin's enforcement hooks run in this repo (skip a key already present in an existing file):
+     ```json
+     {
+       "frontends": [{ "root": "admin/src", "aliases": {}, "components": ["components/**", "pages/**", "features/*/components/**"] }],
+       "apis": [{ "root": "server/src" }]
+     }
+     ```
+     There is no `apiClient` file: `getFetchClient()` is the entry point. Use the plugin's real path prefix if it lives in a monorepo (e.g. `packages/<name>/admin/src`), relative to the repo root.
 
 4. **Run `npm install`** in the new plugin directory.
 
@@ -36,5 +45,6 @@ Report:
 - Files customized beyond the base scaffold
 - Any verify errors
 - Next-step commands (`npm run build`, `npm run watch:link`)
+- Whether the fullstack-standards plugin is installed; if not, suggest `/plugin marketplace add ayhid/fullstack-standards` and `/plugin install fullstack-standards@fullstack-standards`
 
 Defer to the **strapi-plugin-dev** skill for any architecture decisions during scaffolding. Do not invent file structures — use the canonical patterns from `patterns.md`.
