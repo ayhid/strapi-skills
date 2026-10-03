@@ -12,6 +12,15 @@ file_path="$(printf '%s' "$payload" | sed -n 's/.*"file_path"[[:space:]]*:[[:spa
 
 # Data layer (strapi-plugin-dev/fullstack-standards.md): component → hook → service → getFetchClient.
 # Test files are exempt: they mock services and getFetchClient.
+# With a fullstack-standards config, its own hooks deny the layering violations
+# (strapi-admin preset); only the checks it lacks run here.
+has_fullstack_config=false
+dir="$(dirname "$file_path")"
+while [[ "$dir" != "/" && "$dir" != "." ]]; do
+  if [[ -f "$dir/.claude/fullstack-standards.json" ]]; then has_fullstack_config=true; break; fi
+  dir="$(dirname "$dir")"
+done
+
 data_issues=()
 case "$file_path" in
   *.test.* | *.spec.* | */__tests__/*) ;;
@@ -20,13 +29,13 @@ case "$file_path" in
     [[ "$file_path" == */services/* || "$file_path" == *.service.ts ]] && in_service=true
     [[ "$file_path" == */hooks/* ]] && in_hook=true
 
-    if grep -qE '\buseFetchClient\b' "$file_path"; then
+    if ! $has_fullstack_config && grep -qE '\buseFetchClient\b' "$file_path"; then
       data_issues+=("• \`useFetchClient\` — data goes through a feature service calling \`getFetchClient()\`; components and hooks never fetch")
     fi
-    if ! $in_service && grep -qE '\bgetFetchClient\b' "$file_path"; then
+    if ! $has_fullstack_config && ! $in_service && grep -qE '\bgetFetchClient\b' "$file_path"; then
       data_issues+=("• \`getFetchClient\` outside \`features/*/services/\` — only services call the fetch client; move the request into the feature service")
     fi
-    if ! $in_hook && grep -qE '\b(useQuery|useMutation|useInfiniteQuery|useSuspenseQuery)\(' "$file_path"; then
+    if ! $has_fullstack_config && ! $in_hook && grep -qE '\b(useQuery|useMutation|useInfiniteQuery|useSuspenseQuery)\(' "$file_path"; then
       data_issues+=("• \`useQuery\`/\`useMutation\` outside \`features/*/hooks/\` — components call feature hooks only")
     fi
     if grep -qE 'queryKey:[[:space:]]*\[' "$file_path"; then

@@ -37,3 +37,12 @@ cat <<'EOF'
 • Targets Strapi 5.x (latest 5.56): Node >=20 <=26, React 18, DS 2.2.x.
 • Load the strapi-plugin-dev and strapi-ui-design skills as needed for full patterns.
 EOF
+
+# The admin data layer and its tests come from fullstack-standards: say when it is not wired in.
+if [[ ! -f "$cwd/.claude/fullstack-standards.json" ]]; then
+  if [[ -d "$HOME/.claude/plugins/cache/fullstack-standards" ]]; then
+    echo '• No `.claude/fullstack-standards.json` here, so the fullstack-standards checks are off. Suggest once to write it with the `strapi-admin`/`strapi-plugin` presets (fullstack-standards:project-profile, `--write-config`).'
+  else
+    echo '• The fullstack-standards plugin (admin data layer, its tests, architecture checks) is not installed. Suggest once: `/plugin marketplace add ayhid/fullstack-standards`, then `/plugin install fullstack-standards@fullstack-standards`.'
+  fi
+fi
