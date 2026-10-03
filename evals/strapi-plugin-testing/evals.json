@@ -65,6 +65,21 @@
         "The service has a test that mocks getFetchClient and asserts the exact path and request body plus the mapped result",
         "No test mocks the network with msw or mocks @tanstack/react-query"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "In the redirects plugin (evals/files/redirects-plugin, Strapi v5), email the site owner through Brevo (the `@getbrevo/brevo` SDK) whenever a redirect is created, from the Content Manager or the API. The recipient comes from the plugin config (`notifyEmail`); with no recipient configured, nothing is sent. Sending is best effort: a Brevo failure is logged and must never fail the create. Write the code and the tests. There's no node_modules so you can't run anything, just write the files.",
+      "expected_output": "The SDK behind a mailer port with one Brevo adapter; the notification decision (recipient, message) as framework-free logic; a document service middleware (or lifecycle) as the thin trigger; unit tests faking the port, an adapter test with a fake SDK client, and an integration test proving the trigger fires for redirect creates only.",
+      "files": [],
+      "assertions": [
+        "`@getbrevo/brevo` is imported by exactly one non-test file, a `*.adapter.ts` under server/src, which implements a mailer port the plugin defines",
+        "Code that decides whether and what to send depends on the port, not on the SDK, and that decision logic does not import @strapi/* or reference strapi",
+        "A unit test fakes the port and asserts the exact send params, that nothing is sent without a recipient, and that a send failure does not throw (best effort)",
+        "The adapter has a test that passes a fake SDK client and asserts the payload sent to Brevo and how SDK errors are translated",
+        "No test calls jest.mock/vi.mock on @getbrevo/brevo or imports it",
+        "The trigger is a document service middleware (strapi.documents.use) or lifecycle that stays thin (reads input, calls the decision/port)",
+        "An integration test against a real Strapi (fixture app) proves the trigger fires on redirect create and not on other content types or actions, with the port faked at the plugin boundary rather than the SDK"
+      ]
     }
   ]
 }
