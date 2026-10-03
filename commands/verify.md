@@ -26,7 +26,7 @@ Verify the Strapi v5 plugin in the current directory. Follow the strapi-plugin-d
    - `renderHook(` in admin tests, or test files under `hooks/`
    - A provider SDK (`stripe`, `@getbrevo/brevo`, `nodemailer`, `@aws-sdk/`, `openai`, …) imported in `server/src` outside a `*.adapter.ts`
 
-5. **If `.claude/fullstack-standards.json` exists** and the fullstack-standards plugin is installed, also run its audit and include the findings: `node <fullstack-standards plugin>/scripts/architecture/check-architecture.mjs --all .`
+5. **If `.claude/fullstack-standards.json` exists**, run the architecture checks and include the findings: the `test:rules` script if the plugin has one, otherwise `npx --yes github:ayhid/fullstack-standards --all .`. They cover the layering greps above with an AST and add the `strapi-plugin-testing` rules (framework-free domain, units stay units, no faked data access). If it does not exist, report that the checks are off.
 
 3. **Validate** every `server/src/content-types/*/schema.json` has `kind`, `info.singularName`, `info.pluralName`, `collectionName`.
 

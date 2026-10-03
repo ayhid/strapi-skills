@@ -56,9 +56,12 @@ caught high means a test missing low.
 
 ## Workflow
 
-1. **Locate yourself.** Find the plugin root, its fixture app, the test commands and the
-   project's conventions (`package.json` scripts, `TESTING.md`, `AGENTS.md`/`CLAUDE.md`).
-   Project conventions win over the defaults in this skill.
+1. **Locate yourself.** Read the project profile first: the
+   `<!-- project-profile:start -->` block in `AGENTS.md`, written by
+   `fullstack-standards:project-profile`, names the plugin root, fixture app, test runner
+   and the unit, integration and rules commands. No profile? Suggest creating one, and
+   meanwhile find them in `package.json` scripts, `TESTING.md` and `CLAUDE.md`. Project
+   conventions win over the defaults in this skill.
 2. **Planning a feature or phase?** Use `references/planning-template.md`: every task
    declares its layer and the test that proves it, before code exists.
 3. **Starting a feature?** Work double-loop (`references/double-loop-tdd.md`): one failing
@@ -82,18 +85,30 @@ caught high means a test missing low.
 
 ## The rules package
 
-Deterministic checks are not in this skill; they live in a separate rules package that
-runs with one command. Find it in the plugin's `package.json` (a `rules` / `test:rules`
-script) and run it before finishing. It currently enforces:
+Deterministic checks are not in this skill. They are the fullstack-standards
+architecture checker with its `strapi-plugin` and `strapi-admin` presets, configured in
+`.claude/fullstack-standards.json`. With the fullstack-standards plugin installed they
+run as hooks while you work (an edit that breaks a rule is denied); the plugin's
+`test:rules` script runs the same checks in CI
+(`npx --yes github:ayhid/fullstack-standards#<tag> --all .`). Run it before finishing.
+It enforces:
 
-- **Domain is framework-free** — domain modules never depend on Strapi.
-- **Units stay units** — unit tests never boot Strapi or import the integration harness.
-- **Changes come with tests** — plugin server changes come with added or touched tests.
+- **Domain is framework-free** (`domain-framework-free`) — `server/src/domain/**` never
+  imports `@strapi/*` or touches `strapi`.
+- **Units stay units** (`unit-stays-unit`) — `tests/unit/**` never imports the
+  integration harness or `@strapi/strapi`, never calls `createStrapi`.
+- **No faked data access** (`no-fake-data-access`) — no unit test assigns a double to
+  `documents`, `db` or `entityService`.
+- **Third-party SDKs only in adapters** (`sdk-importers`, `no-sdk-in-specs`).
+- **Admin layering and tests** (`component-imports`, `hook-imports`,
+  `component-data-hooks`, `component-test`, `service-test`, `no-render-hook`).
+
+Not automated: "server changes come with tests" — check it yourself before finishing.
 
 Its messages say what is wrong, which principle, and how to fix — follow them rather than
 working around them. If a rule fires and you believe it is a false positive, say so to
-the user instead of restructuring code to dodge the check. If the project has no rules
-command yet, say that plainly; don't invent one.
+the user instead of restructuring code to dodge the check. If the project has no config
+or `test:rules` script yet, say that plainly and suggest adding them; don't invent one.
 
 ## Default file layout
 

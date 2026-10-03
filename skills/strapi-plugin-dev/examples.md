@@ -1100,15 +1100,18 @@ hooks, hooks call the service, only the service calls `getFetchClient()`.
 
 ```ts
 // admin/src/lib/query-client.ts
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, type QueryClientConfig } from '@tanstack/react-query';
 
-// Shared by every provider the plugin renders: pages and CM-injected components.
-export const queryClient = new QueryClient({
+// Production defaults, exported so component tests can reproduce cache bugs.
+export const queryClientConfig: QueryClientConfig = {
   defaultOptions: {
     queries: { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false, retry: 2 },
     mutations: { retry: 0 },
   },
-});
+};
+
+// Shared by every provider the plugin renders: pages and CM-injected components.
+export const queryClient = new QueryClient(queryClientConfig);
 
 // admin/src/lib/query-keys.ts
 export const queryKeys = {

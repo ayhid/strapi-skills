@@ -25,14 +25,17 @@ Scaffold a new Strapi v5 plugin named `$1`. Follow the strapi-plugin-dev skill.
    - Split `server/src/routes/` into `admin/` and `content-api/` subdirectories.
    - Use `factories.createCoreService`, `factories.createCoreController`, `factories.createCoreRouter` for any generated CRUD scaffolding (see patterns.md).
    - Lay out the admin data layer per the skill's `fullstack-standards.md`: `admin/src/lib/query-client.ts` (production defaults + the one shared `queryClient`), `admin/src/lib/query-keys.ts` (empty factory), and an `admin/src/features/` folder for `services/` (the only callers of `getFetchClient()`), `hooks/` and `components/`.
-   - Write `.claude/fullstack-standards.json` so the fullstack-standards plugin's enforcement hooks run in this repo (skip a key already present in an existing file):
+   - Copy fullstack-standards' `skills/fullstack-testing/templates/frontend/test-utils/strapi-admin.tsx` to `admin/src/test/data-layer-test-utils.tsx` (component tests render through its `renderWithDataLayer`).
+   - Write `.claude/fullstack-standards.json` at the repo root so the fullstack-standards hooks run. With that plugin installed, prefer `node <fullstack-standards>/skills/project-profile/scripts/detect-profile.mjs . --write-config`, which detects the plugin and never overwrites existing values; otherwise write:
      ```json
      {
-       "frontends": [{ "root": "admin/src", "aliases": {}, "components": ["components/**", "pages/**", "features/*/components/**"] }],
-       "apis": [{ "root": "server/src" }]
+       "frontends": [{ "root": "admin/src", "preset": "strapi-admin" }],
+       "apis": [{ "root": ".", "preset": "strapi-plugin" }]
      }
      ```
-     There is no `apiClient` file: `getFetchClient()` is the entry point. Use the plugin's real path prefix if it lives in a monorepo (e.g. `packages/<name>/admin/src`), relative to the repo root.
+     Prefix both roots with the plugin's path if it doesn't sit at the repo root (e.g. `packages/<name>`, `src/plugins/<name>`).
+   - Add `"test:rules": "fullstack-standards --all ."` to `scripts` and `"fullstack-standards": "github:ayhid/fullstack-standards#<tag>"` to `devDependencies` (pin the latest release tag), so CI runs the same checks. Keep `typescript` ^5 in `devDependencies`: the checker loads it from the plugin.
+   - Offer to write the project profile into `AGENTS.md` with the `fullstack-standards:project-profile` skill.
 
 4. **Run `npm install`** in the new plugin directory.
 

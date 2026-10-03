@@ -204,11 +204,13 @@ export const TodoPanel: PanelComponent = ({ model, documentId }) => ({
 Per `fullstack-standards:fullstack-testing` (`references/frontend-vitest.md`), with the
 plugin's runner (Jest or Vitest; `vi.*` below):
 
-- **Component test** for `TaskList`: render it inside a fresh `QueryClientProvider`
-  (fullstack's `test-utils/tanstack-query.tsx`, importing `queryClientConfig` from
-  `lib/query-client.ts`) and the Design System's `DesignSystemProvider` — or Strapi's
-  `render` from `@strapi/strapi/admin/test` when the component needs admin providers
-  such as `useNotification`. `vi.mock` the **service module**; for each branch assert
+- **Component test** for `TaskList`: `renderWithDataLayer(<TaskList … />)` from
+  `admin/src/test/data-layer-test-utils.tsx`, copied from fullstack's
+  `templates/frontend/test-utils/strapi-admin.tsx`. It renders with a fresh
+  `QueryClientProvider` and the Design System theme, or inside Strapi's admin providers
+  with `{ admin: true }` (for `useNotification`, `useRBAC`, the router).
+  `createProductionLikeDataLayer()` reuses `queryClientConfig` from `lib/query-client.ts`
+  to reproduce cache bugs. `vi.mock` the **service module**; for each branch assert
   what the user sees and which `tasksService` function ran, with which arguments, how
   often. No `renderHook`, no test file under `hooks/`.
 - **Service test** for `tasks.service.ts`: mock `getFetchClient` and assert the exact
@@ -262,9 +264,26 @@ fake SDK client; no spec `jest.mock`s the SDK. Details:
 
 ## Enforcement hooks
 
-With the fullstack-standards plugin installed, `/strapi-skills:scaffold-plugin` writes
-`.claude/fullstack-standards.json` for `admin/src` and `server/src`, which turns on its
-hooks (component and service tests required, no `renderHook`, no `fetch`/`axios`, SDKs
-only in adapters). Its checker recognises the entry point by file path, so it cannot see
-`getFetchClient`; strapi-skills' own edit hook warns when a component or hook calls
-`getFetchClient`/`useFetchClient` or a component calls `useQuery`/`useMutation`.
+`.claude/fullstack-standards.json` turns on the fullstack-standards hooks for the
+plugin. `/strapi-skills:scaffold-plugin` writes it; for an existing plugin run
+`fullstack-standards:project-profile` (`--write-config`), which detects the plugin:
+
+```json
+{
+  "frontends": [{ "root": "admin/src", "preset": "strapi-admin" }],
+  "apis": [{ "root": ".", "preset": "strapi-plugin" }]
+}
+```
+
+- `strapi-admin`: only services call `getFetchClient()`, nothing calls `useFetchClient`,
+  components never call `useQuery`/`useMutation`; every component has a render test
+  and every service a test; no `renderHook`, no `fetch`/`axios`.
+- `strapi-plugin`: SDKs only in `server/src/**/*.adapter.ts`, plus the
+  `strapi-plugin-testing` rules (framework-free domain, units stay units, no faked
+  `strapi.documents`).
+
+Edits that break a rule are denied, and the session cannot finish while a changed
+component or service has no test. Existing debt is recorded once with `--baseline`.
+The same checks run in CI through the plugin's `test:rules` script. strapi-skills' own
+edit hook adds what the checker lacks (inline query keys, a second `new QueryClient()`),
+and covers the layering itself only when no config exists.

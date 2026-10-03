@@ -171,12 +171,14 @@ The admin follows `fullstack-standards` (component → feature hook → service 
 `getFetchClient()`; see `strapi-plugin-dev/fullstack-standards.md`), and so do its tests
 (`fullstack-standards:fullstack-testing`, `references/frontend-vitest.md`):
 
-- **Every component has a test that renders it.** A fresh `QueryClientProvider` (its
-  production-like variant reuses `queryClientConfig` from `lib/query-client.ts` to
-  reproduce cache bugs) plus the Design System's `DesignSystemProvider`, or Strapi's
-  `render` from `@strapi/strapi/admin/test` when the component needs admin providers
-  (`useNotification`, `useRBAC`). Mock the **feature service module**; for each branch
-  assert what the user sees and which service function ran, with which arguments, how often.
+- **Every component has a test that renders it**, with `renderWithDataLayer` from
+  `admin/src/test/data-layer-test-utils.tsx` (copied from fullstack-standards'
+  `templates/frontend/test-utils/strapi-admin.tsx`): a fresh `QueryClientProvider` and
+  the Design System theme, or Strapi's admin providers with `{ admin: true }` for
+  components using `useNotification`, `useRBAC` or the router.
+  `createProductionLikeDataLayer()` reuses `queryClientConfig` to reproduce cache bugs.
+  Mock the **feature service module**; for each branch assert what the user sees and
+  which service function ran, with which arguments, how often.
 - **Hooks get no tests of their own** — no `renderHook`, no test file under `hooks/`.
 - **Every service has a test** that mocks `getFetchClient` from `@strapi/strapi/admin` and
   asserts the exact path, body and options, and the mapped result.

@@ -38,8 +38,13 @@ rules themselves come from the fullstack-standards skills, so install that plugi
 /plugin install fullstack-standards@fullstack-standards
 ```
 
-`/strapi-skills:scaffold-plugin` writes `.claude/fullstack-standards.json`, which turns on
-its enforcement hooks for `admin/src` and `server/src`.
+`/strapi-skills:scaffold-plugin` writes `.claude/fullstack-standards.json` with the
+`strapi-admin` and `strapi-plugin` presets (for an existing plugin, run
+`fullstack-standards:project-profile`, which detects it). That turns on its hooks: edits
+that break the layering or the `strapi-plugin-testing` rules (framework-free domain,
+units stay units, no faked `strapi.documents`, SDKs only in adapters) are denied, and a
+session cannot finish while a changed component or service has no test. The plugin's
+`test:rules` script runs the same checks in CI.
 
 ## Install
 
