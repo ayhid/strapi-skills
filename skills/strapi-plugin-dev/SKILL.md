@@ -19,6 +19,7 @@ This skill is a router. The detailed patterns live in two companion files — lo
 | Factory pattern, Document Service middlewares, lifecycle hooks, middleware, custom fields, cron, RBAC (client + server), polymorphic relations, monorepo, advanced TS, React Query deep dive, RHF + Zod | **[patterns.md](patterns.md)** |
 | Menu/settings links, homepage widgets, CM document/bulk actions, route Zod schemas & strict params, MCP tools | **[patterns.md → Strapi 5 Admin & Server APIs](patterns.md)** |
 | Full end-to-end plugin walkthroughs (Bookmarks, Todo, Settings, Import/Export) | **[examples.md](examples.md)** |
+| Admin data layer (component → hook → service → `getFetchClient`), its tests, third-party ports | **[fullstack-standards.md](fullstack-standards.md)**, with the `fullstack-standards:data-layer` and `fullstack-standards:fullstack-testing` skills |
 | Live, up-to-date API verification | **Context7** (see next section) |
 
 ## Live Documentation Verification (Context7)
@@ -121,7 +122,10 @@ For factory-based service/controller/router, modern `package.json` exports, serv
 | **Yup** for validation | Use **Zod** (type-safe, smaller bundle) |
 | **`react-query` v3** | Use **`@tanstack/react-query` v5** |
 | Manual `useState` for forms | Use `useForm()` |
-| Assuming Strapi provides a TanStack `QueryClient` | It doesn't (admin uses react-query v3 internally). Wrap every tree you render — plugin pages **and** injected CM components — in your own `QueryClientProvider` |
+| Assuming Strapi provides a TanStack `QueryClient` | It doesn't (admin uses react-query v3 internally). Wrap every tree you render — plugin pages **and** injected CM components — in a `QueryClientProvider` given the plugin's **one shared** `queryClient` |
+| `useQuery` / `useMutation` / `useFetchClient` in a component | Component → feature hook → service; only services call `getFetchClient()` ([fullstack-standards.md](fullstack-standards.md)) |
+| Inline query keys (`queryKey: ['tasks', id]`) | Keys from the factory in `admin/src/lib/query-keys.ts`; every mutation invalidates the resource root |
+| A provider SDK imported outside its adapter | Port in `server/src/domain/`, one adapter in `server/src/adapters/` |
 | Native HTML buttons / inputs in admin | Use `@strapi/design-system` v2 compound components |
 | `alert()` / `window.confirm` | Use `useNotification()` / `Dialog` |
 
@@ -167,9 +171,10 @@ npx @strapi/sdk-plugin@latest verify
 - [ ] Custom query params declared (route `request` schema or `strapi.contentAPI.addQueryParams`) so the plugin works with `rest.strictParams`
 
 **Admin Panel**
-- [ ] `@tanstack/react-query` **v5** for data fetching
+- [ ] `@tanstack/react-query` **v5** for data fetching, layered per **[fullstack-standards.md](fullstack-standards.md)**: components call feature hooks, hooks call services, only services call `getFetchClient()`
+- [ ] One shared `queryClient` (`admin/src/lib/query-client.ts`) and one key factory (`admin/src/lib/query-keys.ts`)
+- [ ] Every component has a render test with its service mocked; every service has a test with `getFetchClient` mocked
 - [ ] `react-hook-form` + `zod` for forms and validation
-- [ ] `useFetchClient()` / `getFetchClient()` for API calls
 - [ ] `unstable_useContentManagerContext()` for current entity info (re-check status each Strapi minor)
 - [ ] `addEditViewSidePanel()`, `addDocumentAction()` / `addDocumentHeaderAction()` / `addBulkAction()`, or `injectComponent()` for CM integration
 - [ ] Strapi Design System v2 compound components (`Field.Root`, `Modal.Root`, `Dialog.Root`)

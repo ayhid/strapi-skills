@@ -436,9 +436,52 @@ export default syncService;
 
 ### Admin Settings Page
 
+```ts
+// admin/src/features/settings/services/settings.service.ts
+import { getFetchClient } from '@strapi/strapi/admin';
+
+export interface SyncSettings { apiUrl: string; apiKey: string }
+
+export const settingsService = {
+  get: async (): Promise<SyncSettings> => {
+    const { get } = getFetchClient();
+    const res = await get<SyncSettings>('/sync-plugin/settings');
+    return res.data;
+  },
+  update: async (settings: SyncSettings): Promise<SyncSettings> => {
+    const { put } = getFetchClient();
+    const res = await put<SyncSettings>('/sync-plugin/settings', settings);
+    return res.data;
+  },
+};
+
+// admin/src/features/settings/hooks/use-settings.ts
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/query-keys'; // settings: { all: ['settings'] }
+import { settingsService, type SyncSettings } from '../services/settings.service';
+
+export const useSettings = () =>
+  useQuery({ queryKey: queryKeys.settings.all, queryFn: settingsService.get });
+
+export function useUpdateSettings(
+  callbacks: { onSuccess?: (s: SyncSettings) => void; onError?: (e: Error) => void } = {}
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settingsService.update,
+    onSuccess: async (settings) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
+      callbacks.onSuccess?.(settings);
+    },
+    onError: callbacks.onError,
+  });
+}
+```
+
 ```tsx
 // admin/src/pages/Settings.tsx
 import { useState, useEffect } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import {
   Main,
   Box,
@@ -449,49 +492,28 @@ import {
   Flex,
   Alert,
 } from '@strapi/design-system';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { useNotification } from '@strapi/strapi/admin';
+import { queryClient } from '../lib/query-client';
+import { useSettings, useUpdateSettings } from '../features/settings/hooks/use-settings';
 
-const Settings = () => {
+const SettingsForm = () => {
   const [settings, setSettings] = useState({ apiUrl: '', apiKey: '' });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const { get, put } = useFetchClient();
   const { toggleNotification } = useNotification();
+  const { data, isLoading } = useSettings();
 
+  // Seed the local form state once the settings arrive
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const { data } = await get('/sync-plugin/settings');
-        setSettings(data);
-      } catch (error) {
-        console.error('Failed to fetch settings:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (data) setSettings(data);
+  }, [data]);
 
-    fetchSettings();
-  }, []);
+  const save = useUpdateSettings({
+    onSuccess: () =>
+      toggleNotification({ type: 'success', message: 'Settings saved successfully' }),
+    onError: () =>
+      toggleNotification({ type: 'danger', message: 'Failed to save settings' }),
+  });
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await put('/sync-plugin/settings', settings);
-      toggleNotification({
-        type: 'success',
-        message: 'Settings saved successfully',
-      });
-    } catch (error) {
-      toggleNotification({
-        type: 'danger',
-        message: 'Failed to save settings',
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) {
+  if (isLoading) {
     return <Main><Box padding={8}>Loading...</Box></Main>;
   }
 
@@ -523,7 +545,7 @@ const Settings = () => {
               />
             </Field.Root>
 
-            <Button onClick={handleSave} loading={saving}>
+            <Button onClick={() => save.mutate(settings)} loading={save.isPending}>
               Save Settings
             </Button>
           </Flex>
@@ -532,6 +554,13 @@ const Settings = () => {
     </Main>
   );
 };
+
+// Strapi doesn't provide a TanStack client — wrap the page in the plugin's shared one
+const Settings = () => (
+  <QueryClientProvider client={queryClient}>
+    <SettingsForm />
+  </QueryClientProvider>
+);
 
 export default Settings;
 ```
@@ -1064,29 +1093,125 @@ export const Initializer = ({ setPlugin }: Props) => {
 };
 ```
 
+### Data Layer: Keys, Service, Hooks
+
+The admin follows [fullstack-standards.md](fullstack-standards.md): components call feature
+hooks, hooks call the service, only the service calls `getFetchClient()`.
+
+```ts
+// admin/src/lib/query-client.ts
+import { QueryClient } from '@tanstack/react-query';
+
+// Shared by every provider the plugin renders: pages and CM-injected components.
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false, retry: 2 },
+    mutations: { retry: 0 },
+  },
+});
+
+// admin/src/lib/query-keys.ts
+export const queryKeys = {
+  tasks: {
+    all: ['task'] as const,
+    related: (model: string, documentId: string) =>
+      [...queryKeys.tasks.all, 'related', model, documentId] as const,
+  },
+} as const;
+```
+
+```ts
+// admin/src/features/todo/services/tasks.service.ts
+import { getFetchClient } from '@strapi/strapi/admin';
+
+export interface Task { documentId: string; name: string; done: boolean }
+export interface CreateTaskInput { name: string; model: string; documentId: string }
+
+export const tasksService = {
+  listRelated: async (model: string, documentId: string): Promise<Task[]> => {
+    const { get } = getFetchClient();
+    // The custom controller answers `ctx.body = tasks` (no { data } envelope)
+    const res = await get<Task[]>(`/todo/tasks/related/${model}/${documentId}`);
+    return res.data;
+  },
+  create: async ({ name, model, documentId }: CreateTaskInput): Promise<Task> => {
+    const { post } = getFetchClient();
+    const res = await post<{ data: Task }>('/todo/tasks', {
+      data: { name, related: [{ __type: model, documentId }] },
+    });
+    return res.data.data;
+  },
+  setDone: async (documentId: string, done: boolean): Promise<Task> => {
+    const { put } = getFetchClient();
+    const res = await put<{ data: Task }>(`/todo/tasks/${documentId}`, { data: { done } });
+    return res.data.data;
+  },
+};
+```
+
+```ts
+// admin/src/features/todo/hooks/use-tasks.ts
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/query-keys';
+import { tasksService, type CreateTaskInput, type Task } from '../services/tasks.service';
+
+interface Callbacks<T> { onSuccess?: (result: T) => void; onError?: (error: Error) => void }
+
+export function useRelatedTasks(model: string, documentId: string) {
+  return useQuery({
+    queryKey: queryKeys.tasks.related(model, documentId),
+    queryFn: () => tasksService.listRelated(model, documentId),
+  });
+}
+
+export function useCreateTask(callbacks: Callbacks<Task> = {}) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTaskInput) => tasksService.create(input),
+    onSuccess: async (task) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      callbacks.onSuccess?.(task);
+    },
+    onError: callbacks.onError,
+  });
+}
+
+export function useSetTaskDone(callbacks: Callbacks<Task> = {}) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ documentId, done }: { documentId: string; done: boolean }) =>
+      tasksService.setDone(documentId, done),
+    onSuccess: async (task) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      callbacks.onSuccess?.(task);
+    },
+    onError: callbacks.onError,
+  });
+}
+```
+
 ### Main Panel Component
 
 ```tsx
 // admin/src/components/TodoPanel.tsx
 import { useState } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import type { PanelComponent } from '@strapi/content-manager/strapi-admin';
 import { TextButton } from '@strapi/design-system';
 import { Plus } from '@strapi/icons';
-import { TaskList } from './TaskList';
-import { TodoModal } from './TodoModal';
-
-// Strapi doesn't provide a TanStack QueryClient — the panel owns one
-const queryClient = new QueryClient();
+import { queryClient } from '../lib/query-client';
+import { TaskList } from '../features/todo/components/TaskList';
+import { TodoModal } from '../features/todo/components/TodoModal';
 
 // Panels receive the edit-view context ({ documentId, model, document, ... })
 // as props and return { title, content } (or null to hide)
-export const TodoPanel: PanelComponent = ({ documentId }) => {
+export const TodoPanel: PanelComponent = ({ model, documentId }) => {
   const [modalOpen, setModalOpen] = useState(false);
 
   return {
     title: 'Todo List',
     content: (
+      // Strapi doesn't provide a TanStack client — use the plugin's shared one
       <QueryClientProvider client={queryClient}>
         <TextButton
           startIcon={<Plus />}
@@ -1098,8 +1223,8 @@ export const TodoPanel: PanelComponent = ({ documentId }) => {
 
         {documentId && (
           <>
-            <TodoModal open={modalOpen} setOpen={setModalOpen} />
-            <TaskList />
+            <TodoModal open={modalOpen} setOpen={setModalOpen} model={model} documentId={documentId} />
+            <TaskList model={model} documentId={documentId} />
           </>
         )}
       </QueryClientProvider>
@@ -1108,41 +1233,28 @@ export const TodoPanel: PanelComponent = ({ documentId }) => {
 };
 ```
 
-### Task List with React Query
+### Task List
 
 ```tsx
-// admin/src/components/TaskList.tsx
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, unstable_useContentManagerContext } from '@strapi/strapi/admin';
-import { Checkbox } from '@strapi/design-system';
+// admin/src/features/todo/components/TaskList.tsx
+import { Checkbox, Loader } from '@strapi/design-system';
+import { useRelatedTasks, useSetTaskDone } from '../hooks/use-tasks';
 
-export const TaskList = () => {
-  const { get, put } = useFetchClient();
-  const { slug, id } = unstable_useContentManagerContext();
-  const queryClient = useQueryClient();
+export const TaskList = ({ model, documentId }: { model: string; documentId: string }) => {
+  const { data: tasks, isLoading } = useRelatedTasks(model, documentId);
+  const setDone = useSetTaskDone();
 
-  const { data: tasks } = useQuery({
-    queryKey: ['tasks', slug, id],
-    queryFn: () => get(`/todo/tasks/related/${slug}/${id}`).then((res) => res.data),
-  });
-
-  const toggleMutation = useMutation({
-    mutationFn: (task: any) =>
-      put(`/todo/tasks/${task.documentId}`, { data: { done: !task.done } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks', slug, id] }),
-  });
-
-  const handleCheckboxChange = (task: any) => {
-    toggleMutation.mutate(task);
-  };
+  if (isLoading) return <Loader small>Loading tasks</Loader>;
 
   return (
     <ul>
-      {tasks?.map((task: any) => (
-        <li key={task.id}>
+      {tasks?.map((task) => (
+        <li key={task.documentId}>
           <Checkbox
             checked={task.done}
-            onCheckedChange={() => handleCheckboxChange(task)}
+            onCheckedChange={(checked) =>
+              setDone.mutate({ documentId: task.documentId, done: checked === true })
+            }
           >
             {task.name}
           </Checkbox>
@@ -1156,33 +1268,23 @@ export const TaskList = () => {
 ### Create Task Modal
 
 ```tsx
-// admin/src/components/TodoModal.tsx
+// admin/src/features/todo/components/TodoModal.tsx
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, unstable_useContentManagerContext } from '@strapi/strapi/admin';
 import { Dialog, Field, TextInput, Button } from '@strapi/design-system';
+import { useCreateTask } from '../hooks/use-tasks';
 
 interface Props {
   open: boolean;
   setOpen: (open: boolean) => void;
+  model: string;
+  documentId: string;
 }
 
-export const TodoModal = ({ open, setOpen }: Props) => {
+export const TodoModal = ({ open, setOpen, model, documentId }: Props) => {
   const [taskName, setTaskName] = useState('');
-  const { post } = useFetchClient();
-  const { id, model } = unstable_useContentManagerContext();
-  const queryClient = useQueryClient();
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      post('/todo/tasks', {
-        data: {
-          name: taskName,
-          related: [{ __type: model, id }],
-        },
-      }),
+  const createTask = useCreateTask({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setTaskName('');
       setOpen(false);
     },
@@ -1207,8 +1309,8 @@ export const TodoModal = ({ open, setOpen }: Props) => {
           </Dialog.Cancel>
           <Dialog.Action>
             <Button
-              onClick={() => createMutation.mutate()}
-              disabled={!taskName || createMutation.isPending}
+              onClick={() => createTask.mutate({ name: taskName, model, documentId })}
+              disabled={!taskName || createTask.isPending}
             >
               Confirm
             </Button>
@@ -1228,6 +1330,7 @@ export const TodoModal = ({ open, setOpen }: Props) => {
 | **Hidden Content Type** | `pluginOptions.content-manager.visible: false` |
 | **Polymorphic Relations** | `morphToMany` for relating tasks to any content type |
 | **Content Manager Integration** | `apis.addEditViewSidePanel([TodoPanel])` returning `{ title, content }` |
-| **React Query** | `useQuery`, `useMutation`, `useQueryClient`, under the panel's own `QueryClientProvider` |
-| **Strapi Admin Hooks** | `useFetchClient`, `unstable_useContentManagerContext` |
+| **Layered data access** | Components → feature hooks (`use-tasks.ts`) → service (`tasks.service.ts`); keys from `lib/query-keys.ts`, mutations invalidate `queryKeys.tasks.all` |
+| **TanStack Query v5** | Panel wrapped in a `QueryClientProvider` with the shared `queryClient` from `lib/query-client.ts` |
+| **Strapi fetch client** | `getFetchClient()` inside service functions only; panel props supply `model` and `documentId` |
 | **Route Composition** | Spreading core router routes + custom endpoints |

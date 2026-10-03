@@ -564,168 +564,27 @@ export default webhookService;
 
 ---
 
-## React Query Pattern (plugin-todo)
+## Data fetching (TanStack Query v5, layered)
 
-The recommended approach for admin panel data fetching using `@tanstack/react-query`.
+Admin data code follows **fullstack-standards** — see [fullstack-standards.md](fullstack-standards.md)
+for the full Todo side-panel example (key factory, service, hooks, component, panel) and its tests.
+The shape: component → feature hook (`admin/src/features/<f>/hooks/use-<resource>.ts`, keys from
+`admin/src/lib/query-keys.ts`, every mutation invalidates `queryKeys.<r>.all`) → service
+(`admin/src/features/<f>/services/<r>.service.ts`, calls `getFetchClient()` and returns domain
+types). Components never call the fetch client, `useQuery`/`useMutation`, or build keys.
 
-> Strapi's admin does **not** provide a TanStack `QueryClient` (it uses react-query v3 internally). Add `@tanstack/react-query` to your plugin's dependencies and wrap **every** tree you render — each plugin page and each component injected into the Content Manager — in your own `QueryClientProvider`. Without it, `useQuery` throws "No QueryClient set".
-
-### Query Client Setup
+> Strapi's admin does **not** provide a TanStack `QueryClient` (it uses react-query v3 internally). Add `@tanstack/react-query` to your plugin's dependencies and wrap **every** tree you render — each plugin page and each component injected into the Content Manager — in a `QueryClientProvider`. Without it, `useQuery` throws "No QueryClient set". Give them all the **same** instance from `admin/src/lib/query-client.ts`; a `new QueryClient()` per tree splits the cache, so a mutation in a side panel cannot invalidate a list on a plugin page.
 
 ```tsx
 // admin/src/components/MyPanel.tsx
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '../lib/query-client'; // the plugin's one shared instance
 
-const queryClient = new QueryClient();
-
-export const MyPanel = () => {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <MyContent />
-    </QueryClientProvider>
-  );
-};
-```
-
-### Data Fetching with useQuery
-
-```tsx
-// admin/src/components/TaskList.tsx
-import { useQuery } from '@tanstack/react-query';
-import { useFetchClient, unstable_useContentManagerContext } from '@strapi/strapi/admin';
-
-export const TaskList = () => {
-  const { get } = useFetchClient();
-  const { slug, id } = unstable_useContentManagerContext();
-
-  const { data: tasks, isLoading, error } = useQuery({
-    queryKey: ['tasks', slug, id],
-    queryFn: () => get(`/todo/tasks/related/${slug}/${id}`).then((res) => res.data),
-    enabled: !!id, // Only fetch when id exists
-  });
-
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error loading tasks</div>;
-
-  return (
-    <ul>
-      {tasks?.map((task: any) => (
-        <li key={task.id}>{task.name}</li>
-      ))}
-    </ul>
-  );
-};
-```
-
-### Mutations with Cache Invalidation
-
-```tsx
-// admin/src/components/TaskList.tsx
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, unstable_useContentManagerContext } from '@strapi/strapi/admin';
-import { Checkbox } from '@strapi/design-system';
-
-export const TaskList = () => {
-  const { get, put } = useFetchClient();
-  const { slug, id } = unstable_useContentManagerContext();
-  const queryClient = useQueryClient();
-
-  const { data: tasks } = useQuery({
-    queryKey: ['tasks', slug, id],
-    queryFn: () => get(`/todo/tasks/related/${slug}/${id}`).then((res) => res.data),
-  });
-
-  const toggleMutation = useMutation({
-    mutationFn: (task: any) =>
-      put(`/todo/tasks/${task.documentId}`, { data: { done: !task.done } }),
-    onSuccess: () => {
-      // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: ['tasks', slug, id] });
-    },
-  });
-
-  return (
-    <ul>
-      {tasks?.map((task: any) => (
-        <li key={task.id}>
-          <Checkbox
-            checked={task.done}
-            onCheckedChange={() => toggleMutation.mutate(task)}
-          >
-            {task.name}
-          </Checkbox>
-        </li>
-      ))}
-    </ul>
-  );
-};
-```
-
-### Create Mutation with Modal
-
-```tsx
-// admin/src/components/TodoModal.tsx
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, unstable_useContentManagerContext } from '@strapi/strapi/admin';
-import { Dialog, Field, TextInput, Button } from '@strapi/design-system';
-
-interface Props {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-}
-
-export const TodoModal = ({ open, setOpen }: Props) => {
-  const [taskName, setTaskName] = useState('');
-  const { post } = useFetchClient();
-  const { id, model } = unstable_useContentManagerContext();
-  const queryClient = useQueryClient();
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      post('/todo/tasks', {
-        data: {
-          name: taskName,
-          related: [{ __type: model, id }],
-        },
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      setTaskName('');
-      setOpen(false);
-    },
-  });
-
-  return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Content>
-        <Dialog.Header>Add Task</Dialog.Header>
-        <Dialog.Body>
-          <Field.Root name="taskName">
-            <Field.Label>Task name</Field.Label>
-            <TextInput
-              value={taskName}
-              onChange={(e) => setTaskName(e.target.value)}
-            />
-          </Field.Root>
-        </Dialog.Body>
-        <Dialog.Footer>
-          <Dialog.Cancel>
-            <Button variant="tertiary">Cancel</Button>
-          </Dialog.Cancel>
-          <Dialog.Action>
-            <Button
-              onClick={() => createMutation.mutate()}
-              disabled={!taskName || createMutation.isPending}
-            >
-              Confirm
-            </Button>
-          </Dialog.Action>
-        </Dialog.Footer>
-      </Dialog.Content>
-    </Dialog.Root>
-  );
-};
+export const MyPanel = () => (
+  <QueryClientProvider client={queryClient}>
+    <MyContent />
+  </QueryClientProvider>
+);
 ```
 
 ## Content Manager Integration Pattern
@@ -1270,8 +1129,7 @@ const filters: StrapiFilters.Filter[] = [
 
 ```tsx
 import {
-  useFetchClient,           // { get, post, put, del } - API calls
-  getFetchClient,            // Same as useFetchClient but not a hook
+  getFetchClient,            // { get, post, put, del } - API calls, in services only
   useNotification,           // { toggleNotification } - toast notifications
   useRBAC,                   // Role-based access control
   unstable_useContentManagerContext, // Content Manager context
@@ -1369,15 +1227,57 @@ For modern Strapi v5 plugins, use React Hook Form with Zod for type-safe form va
 
 ### Basic Settings Form
 
+```ts
+// admin/src/features/settings/services/settings.service.ts
+import { getFetchClient } from '@strapi/strapi/admin';
+
+export interface Settings { apiUrl: string; apiKey: string; enabled: boolean; syncInterval: number }
+
+export const settingsService = {
+  get: async (): Promise<Settings> => {
+    const { get } = getFetchClient();
+    const res = await get<Settings>('/my-plugin/settings');
+    return res.data;
+  },
+  update: async (settings: Settings): Promise<Settings> => {
+    const { put } = getFetchClient();
+    const res = await put<Settings>('/my-plugin/settings', { data: settings });
+    return res.data;
+  },
+};
+
+// admin/src/features/settings/hooks/use-settings.ts
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/query-keys'; // settings: { all: ['settings'] }
+import { settingsService, type Settings } from '../services/settings.service';
+
+export const useSettings = () =>
+  useQuery({ queryKey: queryKeys.settings.all, queryFn: settingsService.get });
+
+export function useUpdateSettings(
+  callbacks: { onSuccess?: (s: Settings) => void; onError?: (e: Error) => void } = {}
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settingsService.update,
+    onSuccess: async (settings) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
+      callbacks.onSuccess?.(settings);
+    },
+    onError: callbacks.onError,
+  });
+}
+```
+
 ```tsx
 // admin/src/pages/SettingsPage.tsx
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import {
-  QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient,
-} from '@tanstack/react-query';
-import { useFetchClient, useNotification, Layouts, Page } from '@strapi/strapi/admin';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { useNotification, Layouts, Page } from '@strapi/strapi/admin';
+import { queryClient } from '../lib/query-client';
+import { useSettings, useUpdateSettings } from '../features/settings/hooks/use-settings';
 import {
   Main, Box, Button, Flex, Field, TextInput, Checkbox,
   Typography,
@@ -1395,9 +1295,7 @@ const settingsSchema = z.object({
 type SettingsFormInput = z.input<typeof settingsSchema>;
 type SettingsFormValues = z.output<typeof settingsSchema>;
 
-// Strapi doesn't provide a TanStack QueryClient — the page owns one
-const queryClient = new QueryClient();
-
+// Strapi doesn't provide a TanStack client — wrap the page in the plugin's shared one
 export const SettingsPage = () => (
   <QueryClientProvider client={queryClient}>
     <SettingsForm />
@@ -1405,15 +1303,10 @@ export const SettingsPage = () => (
 );
 
 const SettingsForm = () => {
-  const { get, put } = useFetchClient();
   const { toggleNotification } = useNotification();
   const { formatMessage } = useIntl();
-  const queryClient = useQueryClient();
 
-  const { data: settings, isLoading } = useQuery({
-    queryKey: ['my-plugin', 'settings'],
-    queryFn: () => get('/my-plugin/settings').then((res) => res.data),
-  });
+  const { data: settings, isLoading } = useSettings();
 
   const {
     register,
@@ -1427,11 +1320,8 @@ const SettingsForm = () => {
     values: settings, // Syncs form with fetched data
   });
 
-  const mutation = useMutation({
-    mutationFn: (data: SettingsFormValues) =>
-      put('/my-plugin/settings', { data }),
+  const mutation = useUpdateSettings({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-plugin', 'settings'] });
       toggleNotification({
         type: 'success',
         message: formatMessage({ id: 'my-plugin.settings.saved' }),
@@ -1509,8 +1399,8 @@ const SettingsForm = () => {
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+import { useNotification } from '@strapi/strapi/admin';
+import { useCreateItem } from '../features/items/hooks/use-items'; // see "Feature Service + Hooks" below
 import {
   Modal, Button, Field, TextInput, SingleSelect, SingleSelectOption,
 } from '@strapi/design-system';
@@ -1532,9 +1422,7 @@ interface Props {
 }
 
 export const CreateItemModal = ({ open, onClose, contentTypes }: Props) => {
-  const { post } = useFetchClient();
   const { toggleNotification } = useNotification();
-  const queryClient = useQueryClient();
 
   const {
     register,
@@ -1547,11 +1435,8 @@ export const CreateItemModal = ({ open, onClose, contentTypes }: Props) => {
     defaultValues: { name: '', slug: '', contentType: '' },
   });
 
-  const mutation = useMutation({
-    mutationFn: (data: CreateItemValues) =>
-      post('/my-plugin/items', { data }),
+  const mutation = useCreateItem({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-plugin', 'items'] });
       toggleNotification({ type: 'success', message: 'Item created' });
       reset();
       onClose();
@@ -1645,61 +1530,29 @@ export const settingsSchema = z.object({
 
 ### Custom Hook: usePluginForm
 
+Form state only: the data access stays in a feature hook, passed in as `mutation`.
+
 ```tsx
 // admin/src/hooks/usePluginForm.ts
-// Uses TanStack hooks: callers must render under the plugin's own QueryClientProvider.
 import { useForm, UseFormProps } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient, useNotification } from '@strapi/strapi/admin';
-import { useIntl } from 'react-intl';
+import type { UseMutationResult } from '@tanstack/react-query';
 import { z } from 'zod';
 
-interface UsePluginFormOptions<T extends z.ZodType> {
+interface UsePluginFormOptions<T extends z.ZodType, R> {
   schema: T;
-  endpoint: string;
-  method?: 'post' | 'put';
-  queryKeyToInvalidate: string[];
-  successMessageId?: string;
+  mutation: UseMutationResult<R, Error, z.infer<T>>; // from a feature hook, e.g. useUpdateSettings()
   formOptions?: Omit<UseFormProps<z.infer<T>>, 'resolver'>;
 }
 
-export function usePluginForm<T extends z.ZodType>({
+export function usePluginForm<T extends z.ZodType, R>({
   schema,
-  endpoint,
-  method = 'post',
-  queryKeyToInvalidate,
-  successMessageId = 'notification.success',
+  mutation,
   formOptions,
-}: UsePluginFormOptions<T>) {
-  const { post, put } = useFetchClient();
-  const { toggleNotification } = useNotification();
-  const { formatMessage } = useIntl();
-  const queryClient = useQueryClient();
-
+}: UsePluginFormOptions<T, R>) {
   const form = useForm<z.infer<T>>({
     resolver: zodResolver(schema),
     ...formOptions,
-  });
-
-  const mutation = useMutation({
-    mutationFn: (data: z.infer<T>) =>
-      method === 'post'
-        ? post(endpoint, { data })
-        : put(endpoint, { data }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeyToInvalidate });
-      toggleNotification({
-        type: 'success',
-        message: formatMessage({ id: successMessageId }),
-      });
-    },
-    onError: () => {
-      toggleNotification({
-        type: 'danger',
-        message: formatMessage({ id: 'notification.error' }),
-      });
-    },
   });
 
   return {
@@ -1708,95 +1561,129 @@ export function usePluginForm<T extends z.ZodType>({
     onSubmit: form.handleSubmit((data) => mutation.mutate(data)),
   };
 }
+
+// Usage in a component — notifications go through the feature hook's callbacks
+const { toggleNotification } = useNotification();
+const updateSettings = useUpdateSettings({
+  onSuccess: () => toggleNotification({ type: 'success', message: formatMessage({ id: 'notification.success' }) }),
+  onError: () => toggleNotification({ type: 'danger', message: formatMessage({ id: 'notification.error' }) }),
+});
+const { register, onSubmit } = usePluginForm({ schema: settingsSchema, mutation: updateSettings });
 ```
 
 ---
 
 ## TanStack Query v5 Patterns (Advanced)
 
-### Custom Query Hooks
+### Feature Service + Hooks (CRUD)
 
-```tsx
-// admin/src/hooks/usePluginData.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFetchClient } from '@strapi/strapi/admin';
+```ts
+// admin/src/lib/query-keys.ts
+export const queryKeys = {
+  items: {
+    all: ['item'] as const,
+    list: (params?: string) => [...queryKeys.items.all, 'list', params] as const,
+    detail: (documentId: string) => [...queryKeys.items.all, 'detail', documentId] as const,
+  },
+} as const;
+
+// admin/src/features/items/services/items.service.ts
+import { getFetchClient } from '@strapi/strapi/admin';
 
 const PLUGIN_PREFIX = '/my-plugin';
 
-export function useItems(params?: string) {
-  const { get } = useFetchClient();
+export const itemsService = {
+  list: async (params?: string): Promise<{ items: Item[]; pagination: PaginationMeta }> => {
+    const { get } = getFetchClient();
+    const res = await get<{ data: Item[]; meta: { pagination: PaginationMeta } }>(
+      `${PLUGIN_PREFIX}/items${params ? `?${params}` : ''}`
+    );
+    return { items: res.data.data, pagination: res.data.meta.pagination };
+  },
+  get: async (documentId: string): Promise<Item> => {
+    const { get } = getFetchClient();
+    const res = await get<{ data: Item }>(`${PLUGIN_PREFIX}/items/${documentId}`);
+    return res.data.data;
+  },
+  create: async (input: CreateItemPayload): Promise<Item> => {
+    const { post } = getFetchClient();
+    const res = await post<{ data: Item }>(`${PLUGIN_PREFIX}/items`, { data: input });
+    return res.data.data;
+  },
+  update: async (documentId: string, input: Partial<Item>): Promise<Item> => {
+    const { put } = getFetchClient();
+    const res = await put<{ data: Item }>(`${PLUGIN_PREFIX}/items/${documentId}`, { data: input });
+    return res.data.data;
+  },
+  remove: async (documentId: string): Promise<void> => {
+    const { del } = getFetchClient();
+    await del(`${PLUGIN_PREFIX}/items/${documentId}`);
+  },
+};
+```
 
+```ts
+// admin/src/features/items/hooks/use-items.ts
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/query-keys';
+import { itemsService } from '../services/items.service';
+
+interface Callbacks<T> { onSuccess?: (result: T) => void; onError?: (error: Error) => void }
+
+export function useItems(params?: string) {
   return useQuery({
-    queryKey: ['my-plugin', 'items', params],
-    queryFn: () =>
-      get<{ data: Item[]; meta: PaginationMeta }>(
-        `${PLUGIN_PREFIX}/items${params ? `?${params}` : ''}`
-      ).then((res) => res.data),
+    queryKey: queryKeys.items.list(params),
+    queryFn: () => itemsService.list(params),
   });
 }
 
 export function useItem(documentId: string) {
-  const { get } = useFetchClient();
-
   return useQuery({
-    queryKey: ['my-plugin', 'items', documentId],
-    queryFn: () =>
-      get<{ data: Item }>(`${PLUGIN_PREFIX}/items/${documentId}`)
-        .then((res) => res.data.data),
+    queryKey: queryKeys.items.detail(documentId),
+    queryFn: () => itemsService.get(documentId),
     enabled: !!documentId,
   });
 }
 
-export function useCreateItem() {
-  const { post } = useFetchClient();
+// Every mutation invalidates the resource root, then calls the caller's callbacks.
+function useItemMutation<V, R>(fn: (vars: V) => Promise<R>, callbacks: Callbacks<R>) {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: (data: CreateItemPayload) =>
-      post(`${PLUGIN_PREFIX}/items`, { data }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-plugin', 'items'] });
+    mutationFn: fn,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.items.all });
+      callbacks.onSuccess?.(result);
     },
+    onError: callbacks.onError,
   });
 }
 
-export function useUpdateItem() {
-  const { put } = useFetchClient();
-  const queryClient = useQueryClient();
+export const useCreateItem = (callbacks: Callbacks<Item> = {}) =>
+  useItemMutation((input: CreateItemPayload) => itemsService.create(input), callbacks);
 
-  return useMutation({
-    mutationFn: ({ documentId, data }: { documentId: string; data: Partial<Item> }) =>
-      put(`${PLUGIN_PREFIX}/items/${documentId}`, { data }),
-    onSuccess: (_, { documentId }) => {
-      queryClient.invalidateQueries({ queryKey: ['my-plugin', 'items'] });
-      queryClient.invalidateQueries({ queryKey: ['my-plugin', 'items', documentId] });
-    },
-  });
-}
+export const useUpdateItem = (callbacks: Callbacks<Item> = {}) =>
+  useItemMutation(
+    ({ documentId, data }: { documentId: string; data: Partial<Item> }) =>
+      itemsService.update(documentId, data),
+    callbacks
+  );
 
-export function useDeleteItem() {
-  const { del } = useFetchClient();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (documentId: string) =>
-      del(`${PLUGIN_PREFIX}/items/${documentId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-plugin', 'items'] });
-    },
-  });
-}
+export const useDeleteItem = (callbacks: Callbacks<void> = {}) =>
+  useItemMutation((documentId: string) => itemsService.remove(documentId), callbacks);
 ```
 
 ### Query Key Conventions
 
-| Key Pattern | Use Case |
-|-------------|----------|
-| `['my-plugin', 'items']` | List of items |
-| `['my-plugin', 'items', params]` | List with query params (pagination, filters) |
-| `['my-plugin', 'items', documentId]` | Single item by ID |
-| `['my-plugin', 'settings']` | Plugin settings |
-| `['my-plugin', 'content-types']` | Available content types |
+Keys come only from the factory in `admin/src/lib/query-keys.ts`; components and
+services never build them.
+
+| Factory entry | Key | Use Case |
+|---------------|-----|----------|
+| `queryKeys.items.all` | `['item']` | Resource root — every mutation invalidates this |
+| `queryKeys.items.list(params)` | `['item', 'list', params]` | List with query params (pagination, filters) |
+| `queryKeys.items.detail(documentId)` | `['item', 'detail', documentId]` | Single item by ID |
+| `queryKeys.settings.all` | `['settings']` | Plugin settings |
+| `queryKeys.contentTypes.all` | `['content-type']` | Available content types |
 
 ### Loading/Error State Pattern
 
@@ -1825,27 +1712,28 @@ const ItemsPage = () => {
 
 ### useFetchClient vs getFetchClient
 
-Strapi provides two ways to make authenticated API calls:
+Services call **`getFetchClient()`**, a plain function, inside each service function (it
+reads the current admin token at call time). `useFetchClient` is the hook form; it can
+only run inside a component or hook, and components never fetch under these standards,
+so plugin code following [fullstack-standards.md](fullstack-standards.md) does not use it.
 
-```tsx
-// Hook version - use in React components
-import { useFetchClient } from '@strapi/strapi/admin';
-
-const MyComponent = () => {
-  const { get, post, put, del } = useFetchClient();
-  // Use in useQuery, useMutation, event handlers
-};
-
-// Utility function - use outside React (or in callbacks that don't need reactivity)
+```ts
+// admin/src/features/items/services/items.service.ts
 import { getFetchClient } from '@strapi/strapi/admin';
 
-const { get, post, put, del } = getFetchClient();
-
-// Both return { data } where:
-// - Outer .data = axios response wrapper
-// - Inner .data = your API payload
-// Access pattern: response.data.data for the actual data
+export const itemsService = {
+  get: async (documentId: string): Promise<Item> => {
+    const { get } = getFetchClient();
+    const res = await get<{ data: Item }>(`/my-plugin/items/${documentId}`);
+    // res.data = the response body; a plugin route answering { data } gives res.data.data
+    return res.data.data;
+  },
+};
 ```
+
+The client resolves `{ data, status }`: `res.data` is the payload body, so a route that
+returns `ctx.body = { data, meta }` gives `res.data.data`. The service unwraps it and
+lets `FetchError` propagate untouched.
 
 ---
 
