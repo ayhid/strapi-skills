@@ -49,6 +49,22 @@
         "Recommends integration tests against a real Strapi/fixture app for drafts and locales",
         "Flags the log.warn assertion as asserting implementation detail rather than outcome"
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "In the redirects plugin (evals/files/redirects-plugin, Strapi v5), add a Content Manager edit-view side panel for pages that lists the redirects pointing at the current document and lets an editor add one (from path + status code). The admin routes are GET /redirects/redirects/to/:documentId and POST /redirects/redirects. Write the admin code and its tests. There's no node_modules so you can't run anything, just write the files.",
+      "expected_output": "Admin code layered component -> feature hook -> service -> getFetchClient, with the panel sharing one queryClient, keys from a factory, the create mutation invalidating the redirects root, a render test per component with the service module mocked, and a service test with getFetchClient mocked.",
+      "files": [],
+      "assertions": [
+        "Only a service file under admin/src/features/*/services/ calls getFetchClient(); no component or hook calls getFetchClient or useFetchClient",
+        "useQuery/useMutation are used only in files under admin/src/features/*/hooks/; components call those hooks",
+        "Query keys come from a key factory module, not inline arrays, and the create mutation invalidates the redirects resource root",
+        "The panel's QueryClientProvider uses a single shared queryClient exported from admin/src/lib/query-client.ts (no new QueryClient() inside the panel)",
+        "Each new component has a test that renders it with the feature service module mocked and asserts both what the user sees and which service function was called with which arguments",
+        "There is no renderHook test and no test file under a hooks/ folder",
+        "The service has a test that mocks getFetchClient and asserts the exact path and request body plus the mapped result",
+        "No test mocks the network with msw or mocks @tanstack/react-query"
+      ]
     }
   ]
 }

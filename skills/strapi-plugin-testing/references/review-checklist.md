@@ -70,7 +70,23 @@ and noise.
 - [ ] Integration tests reset state between tests and don't depend on run order.
 - [ ] No unit test imports the harness or boots Strapi.
 
-## 8. Governance
+## 8. Admin data layer and third parties
+
+Rules from `fullstack-standards` (see `strapi-plugin-dev/fullstack-standards.md`):
+
+- [ ] Components call feature hooks only: no `getFetchClient`/`useFetchClient`,
+      `useQuery`/`useMutation` or query keys in a component.
+- [ ] Hooks call services only; only services call `getFetchClient()`; keys come from
+      `lib/query-keys.ts`; every mutation invalidates its resource root.
+- [ ] Every rendered tree uses the plugin's one shared `queryClient`.
+- [ ] Every component has a render test with its service module mocked; no `renderHook`,
+      no test file under `hooks/`. Asserting which service function ran is the
+      boundary-call exception of §3, not a call-sequence smell.
+- [ ] Every service has a test with `getFetchClient` mocked, asserting the exact request
+      and the mapped result.
+- [ ] A provider SDK is imported only by its adapter, and no spec `jest.mock`s it.
+
+## 9. Governance
 
 - [ ] For each bug fix: is there a test at the lowest layer that reproduces it? If the
       bug was only visible high, is the missing low-level test (or extraction) noted?

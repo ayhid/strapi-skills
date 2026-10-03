@@ -46,6 +46,7 @@ the logic is in the wrong place. Extract it before writing tests.
 | Layer | Proves | Where |
 |---|---|---|
 | Unit (many, fast) | Business rules, config validation, admin helpers, domain decisions; properties for invariants | Domain modules, no Strapi |
+| Admin components and services | Each component rendered with its feature service mocked (hooks covered that way); each service against a mocked `getFetchClient` | `admin/src`, per `fullstack-standards:fullstack-testing` |
 | Integration | Registration, bootstrap idempotence, route exposure, config merging, hook scope, public services, permission matrix, everything data-shaped | Real Strapi booted from the plugin's fixture app, real DB |
 | Contract | Response shapes consumers rely on; what the plugin requires of host content types | Schema checked at integration level |
 | E2E (1–2) | A whole journey works end to end | Fixture app over HTTP |
@@ -66,7 +67,9 @@ caught high means a test missing low.
    layer owns and exactly where mocks are trusted and where they lie.
 5. **Touching register/bootstrap/routes/config/policies/middlewares/lifecycles/content
    types or admin code?** Read `references/plugin-specifics.md` for what to prove and how
-   the fixture-app harness works.
+   the fixture-app harness works. For admin code also load
+   `fullstack-standards:fullstack-testing`, and for a third-party service its
+   `references/third-party-services.md`.
 6. **Logic with invariants** (idempotence, round-trips, totality, termination) or
    index-style state? Read `references/property-based-testing.md`.
 7. **Fixing a bug or a failing test?** First write the lowest-level test that reproduces
@@ -103,7 +106,9 @@ Use the project's layout if it declares one. Otherwise (and the rules package as
     adapters/          # port implementations over strapi.documents / strapi.db
     services/ controllers/ routes/ policies/ middlewares/  # thin adapters
     register.ts bootstrap.ts config/ index.ts
-  admin/src/           # kept light; pure helpers unit tested
+  admin/src/
+    lib/               # query-client.ts (one shared client), query-keys.ts
+    features/<f>/      # services/ (getFetchClient) → hooks/ → components/, tests beside them
   tests/
     unit/              # *.test.ts — domain + admin helpers + config validator
     integration/       # *.int.test.ts — boots the fixture app

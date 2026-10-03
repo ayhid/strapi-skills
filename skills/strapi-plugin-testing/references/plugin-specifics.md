@@ -165,13 +165,24 @@ What integration must prove, against real Strapi:
   prove at integration that a non-conforming fixture type produces a clear error or
   warning rather than a crash later.
 
-## 8. Admin side (kept light in V1)
+## 8. Admin side
 
+The admin follows `fullstack-standards` (component → feature hook → service →
+`getFetchClient()`; see `strapi-plugin-dev/fullstack-standards.md`), and so do its tests
+(`fullstack-standards:fullstack-testing`, `references/frontend-vitest.md`):
+
+- **Every component has a test that renders it.** A fresh `QueryClientProvider` (its
+  production-like variant reuses `queryClientConfig` from `lib/query-client.ts` to
+  reproduce cache bugs) plus the Design System's `DesignSystemProvider`, or Strapi's
+  `render` from `@strapi/strapi/admin/test` when the component needs admin providers
+  (`useNotification`, `useRBAC`). Mock the **feature service module**; for each branch
+  assert what the user sees and which service function ran, with which arguments, how often.
+- **Hooks get no tests of their own** — no `renderHook`, no test file under `hooks/`.
+- **Every service has a test** that mocks `getFetchClient` from `@strapi/strapi/admin` and
+  asserts the exact path, body and options, and the mapped result.
+- Don't mock the network with msw and don't mock `@strapi/admin` internals other than
+  `getFetchClient`.
 - Pure helpers (formatters, view-model mappers, reducers) → unit tests.
-- Components: only where they hold real logic. Render with Strapi's helpers from
-  `@strapi/strapi/admin/test` (`render`, `renderHook`, `screen`, and an msw `server`),
-  which supply the admin providers. Mock the API at the network level (`server.use(...)`),
-  since plugins fetch through `useFetchClient`; never mock `@strapi/admin` internals.
 - Admin API endpoints are server routes — covered by the permission matrix, not by
   admin-side tests.
 

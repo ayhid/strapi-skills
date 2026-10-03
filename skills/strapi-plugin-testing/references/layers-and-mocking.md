@@ -70,7 +70,10 @@ A case that fits several layers belongs to the lowest. One test per case.
 | Logger (`strapi.log`) | ✅ fake | Plumbing. Don't assert log calls unless logging *is* the feature. |
 | Your own service, from another unit | ✅ fake — but prefer a port | You own it; its real behaviour has its own tests. |
 | A port you defined (`RouteIndex`) | ✅ fake, in-memory | Only if the same contract suite runs against the real adapter. |
-| Third-party HTTP API (mail, search, CDN) | ✅ fake at your client wrapper | It's not yours and not Strapi's. Wrap it; fake the wrapper. |
+| Third-party service (mail, payments, storage, search, an LLM) | ✅ fake the port | It's not yours and not Strapi's. Port in `domain/`, one adapter in `adapters/` that alone imports the SDK; consumers fake the port, the adapter's spec passes a fake SDK client. Never `jest.mock` the SDK. → `fullstack-standards:fullstack-testing`, `references/third-party-services.md` |
+| Admin: the feature service, in a component test | ✅ mock the module | The component is the unit; assert what the user sees and which service function ran, with which arguments. |
+| Admin: `getFetchClient`, in a service test | ✅ mock it | The service's job is the request it builds; assert path, body, options and the mapped result. |
+| Admin: TanStack Query, or a hook on its own | ❌ never | Hooks are covered through the components that use them, with a real cache. |
 | `strapi.documents(uid).findMany/findOne/…` | ❌ never | Filters, status, locale, populate are Strapi's semantics. A fake returns whatever you wrote, so the test proves your mock. |
 | `strapi.db.query(uid)` | ❌ never | Same reason, plus relations and constraints. |
 | Draft & publish, `status`, `publishedAt` | ❌ never | The classic lie: fakes can't model draft/published pairs per locale. |
