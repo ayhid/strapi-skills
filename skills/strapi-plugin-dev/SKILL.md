@@ -8,7 +8,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch, mcp__context7__res
 
 You are an expert Strapi v5 developer specializing in plugin development, custom APIs, and admin panel extensions. Write production-grade code following official conventions.
 
-> **Strapi v5 requires Node 18 or 20 (LTS).** Strapi admin runs React 18.
+> **Strapi 5.x (latest 5.56) requires Node `>=20 <=26`; use an active/maintenance LTS (22, 24, 26).** Strapi admin runs React 18 (`react-router-dom` 6, `styled-components` 6).
 
 ## Routing
 
@@ -16,7 +16,8 @@ This skill is a router. The detailed patterns live in two companion files — lo
 
 | Need | Open |
 |---|---|
-| Factory pattern, lifecycle hooks, middleware, custom fields, RBAC, polymorphic relations, monorepo, advanced TS, React Query deep dive, RHF + Zod | **[patterns.md](patterns.md)** |
+| Factory pattern, Document Service middlewares, lifecycle hooks, middleware, custom fields, cron, RBAC (client + server), polymorphic relations, monorepo, advanced TS, React Query deep dive, RHF + Zod | **[patterns.md](patterns.md)** |
+| Menu/settings links, homepage widgets, CM document/bulk actions, route Zod schemas & strict params, MCP tools | **[patterns.md → Strapi 5 Admin & Server APIs](patterns.md)** |
 | Full end-to-end plugin walkthroughs (Bookmarks, Todo, Settings, Import/Export) | **[examples.md](examples.md)** |
 | Live, up-to-date API verification | **Context7** (see next section) |
 
@@ -52,17 +53,25 @@ In Strapi v5, **always use the Document Service API** (`strapi.documents`). Enti
 | Create    | `strapi.documents(uid).create({ data })` | `strapi.entityService.create()` |
 | Update    | `strapi.documents(uid).update({ documentId, data })` | `strapi.entityService.update()` |
 | Delete    | `strapi.documents(uid).delete({ documentId })` | `strapi.entityService.delete()` |
+| Find first | `strapi.documents(uid).findFirst({ filters })` | `strapi.entityService.findMany()` + `[0]` |
+| Count     | `strapi.documents(uid).count({ filters })` | `strapi.entityService.count()` |
 | Publish   | `strapi.documents(uid).publish({ documentId })` | N/A |
 | Unpublish | `strapi.documents(uid).unpublish({ documentId })` | N/A |
+| Discard draft | `strapi.documents(uid).discardDraft({ documentId })` | N/A |
+
+`findMany` returns a plain array (no pagination meta — pair it with `count`). `delete`, `publish`, `unpublish` and `discardDraft` return `{ documentId, entries }`. `publish`/`unpublish`/`discardDraft` only exist on content types with draft & publish enabled.
 
 ```typescript
 const articles = await strapi.documents('api::article.article').findMany({
-  filters: { publishedAt: { $notNull: true } },
   populate: ['author', 'categories'],
   locale: 'en',
-  status: 'published',
+  status: 'published', // 'draft' (default) | 'published' — don't filter on publishedAt
 });
 ```
+
+To filter drafts by publication state use `publicationFilter` (`'never-published' | 'has-published-version' | 'modified' | 'unmodified' | …`); `hasPublishedVersion` is deprecated.
+
+To hook into document operations (the v5 replacement for most v4 lifecycle uses), register a **Document Service middleware** with `strapi.documents.use((ctx, next) => …)` in `register()` — see [patterns.md → Lifecycle Hooks](patterns.md).
 
 > `strapi.db.query(...)` remains valid only as a **low-level escape hatch** for polymorphic junction tables and similar advanced cases. Prefer Document Service for everything else.
 
@@ -70,9 +79,7 @@ const articles = await strapi.documents('api::article.article').findMany({
 
 ```
 my-plugin/
-├── package.json              # strapi.kind: "plugin"
-├── strapi-server.js          # Server entry
-├── strapi-admin.js           # Admin entry
+├── package.json              # strapi.kind: "plugin"; entries via exports["./strapi-server"|"./strapi-admin"]
 ├── server/src/
 │   ├── index.ts              # Main server export
 │   ├── register.ts | bootstrap.ts | destroy.ts
@@ -84,7 +91,7 @@ my-plugin/
 │   ├── policies/index.ts
 │   └── middlewares/index.ts
 └── admin/src/
-    ├── index.tsx
+    ├── index.ts
     ├── pluginId.ts
     ├── pages/
     ├── components/
@@ -114,7 +121,7 @@ For factory-based service/controller/router, modern `package.json` exports, serv
 | **Yup** for validation | Use **Zod** (type-safe, smaller bundle) |
 | **`react-query` v3** | Use **`@tanstack/react-query` v5** |
 | Manual `useState` for forms | Use `useForm()` |
-| Own `QueryClientProvider` at admin root | Strapi admin provides one — only add when injecting CM panels |
+| Assuming Strapi provides a TanStack `QueryClient` | It doesn't (admin uses react-query v3 internally). Wrap every tree you render — plugin pages **and** injected CM components — in your own `QueryClientProvider` |
 | Native HTML buttons / inputs in admin | Use `@strapi/design-system` v2 compound components |
 | `alert()` / `window.confirm` | Use `useNotification()` / `Dialog` |
 
@@ -124,10 +131,10 @@ The companion **strapi-ui-design** skill enforces the admin UI half — use it t
 
 | Issue | Solution |
 |-------|----------|
-| Plugin not loading | Check `package.json` has `strapi.kind: "plugin"` |
+| Plugin not loading | Check `package.json` has `strapi.kind: "plugin"` and `exports["./strapi-server"]` points at a built `dist` (run `npm run build`) |
 | Routes 404 | Verify route type (`content-api` vs `admin`) and handler path |
 | Permission denied | Configure permissions in Settings → Roles |
-| Admin panel blank | Check `admin/src/index.tsx` exports and React errors |
+| Admin panel blank | Check `admin/src/index.ts` exports and React errors |
 | TypeScript errors | Run `strapi ts:generate-types` |
 | Build failures | Run `npm run build` in plugin, check for import errors |
 
@@ -156,13 +163,15 @@ npx @strapi/sdk-plugin@latest verify
 - [ ] `factories.createCoreRouter()` for automatic CRUD routes
 - [ ] Routes split into `admin/` and `content-api/` directories
 - [ ] Internal content types hidden from CM (`pluginOptions.content-manager.visible: false`)
+- [ ] Admin actions registered server-side (`actionProvider.registerMany`) before they're used in `useRBAC` / `admin::hasPermissions`
+- [ ] Custom query params declared (route `request` schema or `strapi.contentAPI.addQueryParams`) so the plugin works with `rest.strictParams`
 
 **Admin Panel**
 - [ ] `@tanstack/react-query` **v5** for data fetching
 - [ ] `react-hook-form` + `zod` for forms and validation
 - [ ] `useFetchClient()` / `getFetchClient()` for API calls
 - [ ] `unstable_useContentManagerContext()` for current entity info (re-check status each Strapi minor)
-- [ ] `injectComponent()` or `addEditViewSidePanel()` for CM integration
+- [ ] `addEditViewSidePanel()`, `addDocumentAction()` / `addDocumentHeaderAction()` / `addBulkAction()`, or `injectComponent()` for CM integration
 - [ ] Strapi Design System v2 compound components (`Field.Root`, `Modal.Root`, `Dialog.Root`)
 - [ ] `registerTrads()` for i18n
 - [ ] `useRBAC()` and `Page.Protect` for permissions

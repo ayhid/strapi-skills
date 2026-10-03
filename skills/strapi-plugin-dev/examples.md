@@ -8,9 +8,7 @@ A full example of a user bookmarks plugin with admin panel.
 
 ```
 bookmark-plugin/
-├── package.json
-├── strapi-server.js
-├── strapi-admin.js
+├── package.json              # entries via exports (no root strapi-server.js / strapi-admin.js)
 ├── server/src/
 │   ├── index.ts
 │   ├── content-types/
@@ -23,7 +21,7 @@ bookmark-plugin/
 │   └── services/
 │       └── bookmark.ts
 └── admin/src/
-    ├── index.tsx
+    ├── index.ts
     └── pages/
         └── HomePage.tsx
 ```
@@ -39,16 +37,45 @@ bookmark-plugin/
     "name": "bookmark-plugin",
     "displayName": "Bookmarks"
   },
-  "main": "./strapi-server.js",
+  "type": "commonjs",
+  "files": ["dist"],
   "exports": {
+    "./package.json": "./package.json",
     "./strapi-admin": {
-      "source": "./admin/src/index.tsx",
-      "require": "./dist/admin/index.js"
+      "types": "./dist/admin/src/index.d.ts",
+      "source": "./admin/src/index.ts",
+      "import": "./dist/admin/index.mjs",
+      "require": "./dist/admin/index.js",
+      "default": "./dist/admin/index.js"
     },
     "./strapi-server": {
+      "types": "./dist/server/src/index.d.ts",
       "source": "./server/src/index.ts",
-      "require": "./dist/server/index.js"
+      "import": "./dist/server/index.mjs",
+      "require": "./dist/server/index.js",
+      "default": "./dist/server/index.js"
     }
+  },
+  "scripts": {
+    "build": "strapi-plugin build",
+    "watch": "strapi-plugin watch",
+    "watch:link": "strapi-plugin watch:link",
+    "verify": "strapi-plugin verify"
+  },
+  "devDependencies": {
+    "@strapi/sdk-plugin": "^6.0.0",
+    "@strapi/strapi": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@strapi/design-system": "^2.0.0",
+    "@strapi/icons": "^2.0.0",
+    "@strapi/sdk-plugin": "^6.0.0",
+    "@strapi/strapi": "^5.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-intl": "^6.0.0",
+    "react-router-dom": "^6.0.0",
+    "styled-components": "^6.0.0"
   }
 }
 ```
@@ -99,8 +126,8 @@ import type { Core } from '@strapi/strapi';
 const BOOKMARK_UID = 'plugin::bookmark-plugin.bookmark';
 
 const bookmarkService = ({ strapi }: { strapi: Core.Strapi }) => ({
-  async getUserBookmarks(userId: string, contentType?: string) {
-    const filters: any = { user: { id: userId } };
+  async getUserBookmarks(userDocumentId: string, contentType?: string) {
+    const filters: any = { user: { documentId: userDocumentId } };
     if (contentType) {
       filters.contentType = contentType;
     }
@@ -111,11 +138,11 @@ const bookmarkService = ({ strapi }: { strapi: Core.Strapi }) => ({
     });
   },
 
-  async addBookmark(userId: string, contentType: string, contentId: string, note?: string) {
+  async addBookmark(userDocumentId: string, contentType: string, contentId: string, note?: string) {
     // Check if already bookmarked
     const existing = await strapi.documents(BOOKMARK_UID).findFirst({
       filters: {
-        user: { id: userId },
+        user: { documentId: userDocumentId },
         contentType,
         contentId,
       },
@@ -127,7 +154,8 @@ const bookmarkService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     return strapi.documents(BOOKMARK_UID).create({
       data: {
-        user: userId,
+        // v5 relations are set by documentId
+        user: { connect: [{ documentId: userDocumentId }] },
         contentType,
         contentId,
         note,
@@ -135,10 +163,10 @@ const bookmarkService = ({ strapi }: { strapi: Core.Strapi }) => ({
     });
   },
 
-  async removeBookmark(userId: string, contentType: string, contentId: string) {
+  async removeBookmark(userDocumentId: string, contentType: string, contentId: string) {
     const bookmark = await strapi.documents(BOOKMARK_UID).findFirst({
       filters: {
-        user: { id: userId },
+        user: { documentId: userDocumentId },
         contentType,
         contentId,
       },
@@ -155,10 +183,10 @@ const bookmarkService = ({ strapi }: { strapi: Core.Strapi }) => ({
     return bookmark;
   },
 
-  async isBookmarked(userId: string, contentType: string, contentId: string) {
+  async isBookmarked(userDocumentId: string, contentType: string, contentId: string) {
     const count = await strapi.documents(BOOKMARK_UID).count({
       filters: {
-        user: { id: userId },
+        user: { documentId: userDocumentId },
         contentType,
         contentId,
       },
@@ -190,7 +218,7 @@ const bookmarkController = ({ strapi }: { strapi: Core.Strapi }) => ({
     const { contentType } = ctx.query;
     const bookmarks = await strapi
       .service('plugin::bookmark-plugin.bookmark')
-      .getUserBookmarks(user.id, contentType);
+      .getUserBookmarks(user.documentId, contentType);
 
     return { data: bookmarks };
   },
@@ -209,7 +237,7 @@ const bookmarkController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     const bookmark = await strapi
       .service('plugin::bookmark-plugin.bookmark')
-      .addBookmark(user.id, contentType, contentId, note);
+      .addBookmark(user.documentId, contentType, contentId, note);
 
     return { data: bookmark };
   },
@@ -228,7 +256,7 @@ const bookmarkController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     const bookmark = await strapi
       .service('plugin::bookmark-plugin.bookmark')
-      .removeBookmark(user.id, contentType, contentId);
+      .removeBookmark(user.documentId, contentType, contentId);
 
     return { data: bookmark };
   },
@@ -247,7 +275,7 @@ const bookmarkController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     const isBookmarked = await strapi
       .service('plugin::bookmark-plugin.bookmark')
-      .isBookmarked(user.id, contentType, contentId);
+      .isBookmarked(user.documentId, contentType, contentId);
 
     return { data: { isBookmarked } };
   },
@@ -415,6 +443,7 @@ import {
   Main,
   Box,
   Typography,
+  Field,
   TextInput,
   Button,
   Flex,
@@ -475,22 +504,24 @@ const Settings = () => {
 
         <Box background="neutral0" padding={6} shadow="filterShadow" hasRadius>
           <Flex direction="column" gap={4}>
-            <TextInput
-              label="API URL"
-              name="apiUrl"
-              value={settings.apiUrl}
-              onChange={(e) => setSettings({ ...settings, apiUrl: e.target.value })}
-              placeholder="https://api.example.com"
-            />
+            <Field.Root name="apiUrl">
+              <Field.Label>API URL</Field.Label>
+              <TextInput
+                value={settings.apiUrl}
+                onChange={(e) => setSettings({ ...settings, apiUrl: e.target.value })}
+                placeholder="https://api.example.com"
+              />
+            </Field.Root>
 
-            <TextInput
-              label="API Key"
-              name="apiKey"
-              type="password"
-              value={settings.apiKey}
-              onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
-              placeholder="Your API key"
-            />
+            <Field.Root name="apiKey">
+              <Field.Label>API Key</Field.Label>
+              <TextInput
+                type="password"
+                value={settings.apiKey}
+                onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
+                placeholder="Your API key"
+              />
+            </Field.Root>
 
             <Button onClick={handleSave} loading={saving}>
               Save Settings
@@ -563,17 +594,17 @@ export default {
 
                 const isBookmarked = await strapi
                   .service('plugin::bookmark-plugin.bookmark')
-                  .isBookmarked(user.id, contentType, contentId);
+                  .isBookmarked(user.documentId, contentType, contentId);
 
                 if (isBookmarked) {
                   await strapi
                     .service('plugin::bookmark-plugin.bookmark')
-                    .removeBookmark(user.id, contentType, contentId);
+                    .removeBookmark(user.documentId, contentType, contentId);
                   return false;
                 } else {
                   await strapi
                     .service('plugin::bookmark-plugin.bookmark')
-                    .addBookmark(user.id, contentType, contentId);
+                    .addBookmark(user.documentId, contentType, contentId);
                   return true;
                 }
               },
@@ -787,28 +818,39 @@ plugin-todo/
     "name": "todo",
     "displayName": "Todo"
   },
+  "type": "commonjs",
   "exports": {
+    "./package.json": "./package.json",
     "./strapi-admin": {
+      "types": "./dist/admin/src/index.d.ts",
       "source": "./admin/src/index.ts",
       "import": "./dist/admin/index.mjs",
-      "require": "./dist/admin/index.js"
+      "require": "./dist/admin/index.js",
+      "default": "./dist/admin/index.js"
     },
     "./strapi-server": {
+      "types": "./dist/server/src/index.d.ts",
       "source": "./server/src/index.ts",
       "import": "./dist/server/index.mjs",
-      "require": "./dist/server/index.js"
+      "require": "./dist/server/index.js",
+      "default": "./dist/server/index.js"
     }
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.90.16",
-    "react-intl": "^7.1.11"
+    "@tanstack/react-query": "^5.90.16"
+  },
+  "devDependencies": {
+    "@strapi/sdk-plugin": "^6.0.0",
+    "@strapi/strapi": "^5.0.0"
   },
   "peerDependencies": {
-    "@strapi/design-system": "^2.0.0-rc.14",
-    "@strapi/icons": "^2.0.0-rc.14",
+    "@strapi/design-system": "^2.0.0",
+    "@strapi/icons": "^2.0.0",
+    "@strapi/sdk-plugin": "^6.0.0",
     "@strapi/strapi": "^5.0.0",
-    "react": "^17.0.0 || ^18.0.0",
-    "react-dom": "^17.0.0 || ^18.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-intl": "^6.0.0",
     "react-router-dom": "^6.0.0",
     "styled-components": "^6.0.0"
   }
@@ -874,13 +916,15 @@ import { factories } from '@strapi/strapi';
 
 export default factories.createCoreService('plugin::todo.task', ({ strapi }) => ({
   async findRelatedTasks(relatedId: string, relatedType: string) {
-    // Query the polymorphic junction table
-    const relatedTasks = await strapi.db.query('tasks_related_mph').findMany({
-      where: {
+    // Query the polymorphic junction table via knex — `strapi.db.query()`
+    // takes a model UID, not a table name
+    const relatedTasks = await strapi.db
+      .connection('tasks_related_mph')
+      .select('task_id')
+      .where({
         related_id: relatedId,
         related_type: relatedType,
-      },
-    });
+      });
 
     const taskIds = relatedTasks.map((t) => t.task_id);
 
@@ -972,11 +1016,8 @@ export default {
   },
 
   bootstrap(app: any) {
-    // Inject panel into Content Manager edit view sidebar
-    app.getPlugin('content-manager').injectComponent('editView', 'right-links', {
-      name: 'todo-panel',
-      Component: TodoPanel,
-    });
+    // Register a panel in the Content Manager edit view sidebar
+    app.getPlugin('content-manager').apis.addEditViewSidePanel([TodoPanel]);
   },
 
   async registerTrads({ locales }: { locales: string[] }) {
@@ -1029,36 +1070,41 @@ export const Initializer = ({ setPlugin }: Props) => {
 // admin/src/components/TodoPanel.tsx
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { unstable_useContentManagerContext as useContentManagerContext } from '@strapi/strapi/admin';
+import type { PanelComponent } from '@strapi/content-manager/strapi-admin';
 import { TextButton } from '@strapi/design-system';
 import { Plus } from '@strapi/icons';
 import { TaskList } from './TaskList';
 import { TodoModal } from './TodoModal';
 
+// Strapi doesn't provide a TanStack QueryClient — the panel owns one
 const queryClient = new QueryClient();
 
-export const TodoPanel = () => {
+// Panels receive the edit-view context ({ documentId, model, document, ... })
+// as props and return { title, content } (or null to hide)
+export const TodoPanel: PanelComponent = ({ documentId }) => {
   const [modalOpen, setModalOpen] = useState(false);
-  const { id } = useContentManagerContext();
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TextButton
-        startIcon={<Plus />}
-        onClick={() => setModalOpen(true)}
-        disabled={!id}
-      >
-        Add todo
-      </TextButton>
+  return {
+    title: 'Todo List',
+    content: (
+      <QueryClientProvider client={queryClient}>
+        <TextButton
+          startIcon={<Plus />}
+          onClick={() => setModalOpen(true)}
+          disabled={!documentId}
+        >
+          Add todo
+        </TextButton>
 
-      {id && (
-        <>
-          <TodoModal open={modalOpen} setOpen={setModalOpen} />
-          <TaskList />
-        </>
-      )}
-    </QueryClientProvider>
-  );
+        {documentId && (
+          <>
+            <TodoModal open={modalOpen} setOpen={setModalOpen} />
+            <TaskList />
+          </>
+        )}
+      </QueryClientProvider>
+    ),
+  };
 };
 ```
 
@@ -1114,7 +1160,7 @@ export const TaskList = () => {
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFetchClient, unstable_useContentManagerContext } from '@strapi/strapi/admin';
-import { Dialog, TextInput, Button } from '@strapi/design-system';
+import { Dialog, Field, TextInput, Button } from '@strapi/design-system';
 
 interface Props {
   open: boolean;
@@ -1147,12 +1193,13 @@ export const TodoModal = ({ open, setOpen }: Props) => {
       <Dialog.Content>
         <Dialog.Header>Add task</Dialog.Header>
         <Dialog.Body>
-          <TextInput
-            label="Task"
-            name="task"
-            value={taskName}
-            onChange={(e: any) => setTaskName(e.target.value)}
-          />
+          <Field.Root name="task">
+            <Field.Label>Task</Field.Label>
+            <TextInput
+              value={taskName}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTaskName(e.target.value)}
+            />
+          </Field.Root>
         </Dialog.Body>
         <Dialog.Footer>
           <Dialog.Cancel>
@@ -1180,7 +1227,7 @@ export const TodoModal = ({ open, setOpen }: Props) => {
 | **Factory Pattern** | `factories.createCoreService()`, `createCoreController()`, `createCoreRouter()` |
 | **Hidden Content Type** | `pluginOptions.content-manager.visible: false` |
 | **Polymorphic Relations** | `morphToMany` for relating tasks to any content type |
-| **Content Manager Integration** | `injectComponent('editView', 'right-links', ...)` |
-| **React Query** | `useQuery`, `useMutation`, `useQueryClient` for data fetching |
+| **Content Manager Integration** | `apis.addEditViewSidePanel([TodoPanel])` returning `{ title, content }` |
+| **React Query** | `useQuery`, `useMutation`, `useQueryClient`, under the panel's own `QueryClientProvider` |
 | **Strapi Admin Hooks** | `useFetchClient`, `unstable_useContentManagerContext` |
 | **Route Composition** | Spreading core router routes + custom endpoints |

@@ -33,7 +33,43 @@ export default async ({ strapi }: { strapi: Core.Strapi }) => {
 };
 ```
 
-### Content-Type Lifecycle Hooks
+### Document Service Middlewares (preferred in v5)
+
+Most v4 lifecycle use cases (derive fields, side effects on create/update/delete) belong in a Document Service middleware. It runs once per document operation, sees `{ uid, contentType, action, params }`, and must return `next()`. Register it in `register()`:
+
+```typescript
+// server/src/register.ts
+const APPLY_TO = ['api::article.article'];
+
+export default ({ strapi }: { strapi: Core.Strapi }) => {
+  strapi.documents.use(async (context, next) => {
+    if (!APPLY_TO.includes(context.uid)) return next();
+
+    if (context.action === 'create' || context.action === 'update') {
+      const data = context.params.data;
+      if (data && !data.slug && data.title) data.slug = slugify(data.title);
+    }
+
+    const result = await next();
+
+    if (context.action === 'create') {
+      await strapi.plugin('my-plugin').service('notifications').send({
+        type: 'new-article',
+        documentId: result.documentId,
+      });
+    }
+    return result;
+  });
+};
+```
+
+Notes:
+- Actions: `findMany`, `findFirst`, `findOne`, `count`, `create`, `update`, `delete`, `publish`, `unpublish`, `discardDraft` (plus internal `clone`).
+- `create`/`update` with `status: 'published'` publish internally — the middleware sees only `action: 'create'`/`'update'` with `params.status === 'published'`, not a separate `publish`.
+
+### Content-Type (DB) Lifecycle Hooks
+
+Lower-level: these fire per database row, so one document operation can trigger them several times (draft + published version, each locale). Use them only when you need row-level behaviour.
 
 ```typescript
 // server/src/content-types/article/lifecycles.ts
@@ -155,18 +191,20 @@ const page = await strapi.documents('api::page.page').findOne({
 ### Pagination
 
 ```typescript
-// Offset pagination
-const { results, pagination } = await strapi
-  .documents('api::article.article')
-  .findMany({
-    status: 'published',
-    limit: 10,
-    start: 20,
-  });
+// Offset pagination — findMany returns a plain array (no pagination meta)
+const articles = await strapi.documents('api::article.article').findMany({
+  status: 'published',
+  limit: 10,
+  start: 20,
+});
+// `page`/`pageSize` also work instead of `start`/`limit` (not both)
 
-// In controllers, use pagination helper
+// In controllers, use pagination helper.
+// Custom query params must be declared (route `request.query` schema or
+// strapi.contentAPI.addQueryParams) if the app enables `rest.strictParams`.
 async findMany(ctx) {
-  const { page = 1, pageSize = 25 } = ctx.query;
+  const page = Number(ctx.query.page ?? 1);
+  const pageSize = Number(ctx.query.pageSize ?? 25);
 
   const start = (page - 1) * pageSize;
   const limit = Math.min(pageSize, 100); // Cap at 100
@@ -269,7 +307,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
   });
 };
 
-// admin/src/index.tsx
+// admin/src/index.ts — inside register(app)
 app.customFields.register({
   name: 'color-picker',
   pluginId: 'my-plugin',
@@ -288,12 +326,18 @@ app.customFields.register({
   options: {
     base: [
       {
-        name: 'options.format',
-        type: 'select',
-        intlLabel: { id: 'color-picker.format', defaultMessage: 'Format' },
-        options: [
-          { value: 'hex', label: 'HEX' },
-          { value: 'rgb', label: 'RGB' },
+        sectionTitle: { id: 'color-picker.section.format', defaultMessage: 'Format' },
+        items: [
+          {
+            name: 'options.format',
+            type: 'select',
+            intlLabel: { id: 'color-picker.format', defaultMessage: 'Format' },
+            description: { id: 'color-picker.format.description', defaultMessage: 'Stored color format' },
+            options: [
+              { key: 'hex', value: 'hex', metadatas: { intlLabel: { id: 'color-picker.format.hex', defaultMessage: 'HEX' } } },
+              { key: 'rgb', value: 'rgb', metadatas: { intlLabel: { id: 'color-picker.format.rgb', defaultMessage: 'RGB' } } },
+            ],
+          },
         ],
       },
     ],
@@ -304,23 +348,29 @@ app.customFields.register({
 ## Injection Zones
 
 ```typescript
-// admin/src/index.tsx
+// admin/src/index.ts
+import { PreviewButton } from './components/PreviewButton';
+import { BulkAction } from './components/BulkAction';
+
 export default {
   bootstrap(app) {
+    // `Component` must be a React component — not a lazy `() => import(...)` loader
     // Inject into Content Manager edit view
     app.getPlugin('content-manager').injectComponent('editView', 'right-links', {
       name: 'my-plugin-preview',
-      Component: () => import('./components/PreviewButton'),
+      Component: PreviewButton,
     });
 
     // Inject into Content Manager list view
     app.getPlugin('content-manager').injectComponent('listView', 'actions', {
       name: 'my-plugin-bulk-action',
-      Component: () => import('./components/BulkAction'),
+      Component: BulkAction,
     });
   },
 };
 ```
+
+For new code prefer the dedicated Content Manager APIs (`addEditViewSidePanel`, `addDocumentAction`, `addDocumentHeaderAction`, `addBulkAction`) — see [Content Manager APIs](#content-manager-apis-strapi-5).
 
 ## Service Composition Pattern
 
@@ -337,19 +387,20 @@ const articleService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
   // Business logic methods
   async publishWithNotification(documentId: string) {
-    const article = await strapi.documents('api::article.article').publish({
+    // publish() returns { documentId, entries } — one entry per published locale
+    const { entries } = await strapi.documents('api::article.article').publish({
       documentId,
     });
 
     // Compose with other services
     await strapi.service('plugin::my-plugin.notification').send({
       type: 'article-published',
-      data: article,
+      data: entries,
     });
 
     await strapi.service('plugin::my-plugin.cache').invalidate(`article:${documentId}`);
 
-    return article;
+    return entries;
   },
 
   // Aggregation methods
@@ -408,19 +459,26 @@ async findOne(ctx) {
 
 ```typescript
 // server/src/services/index.ts
-import type { Core } from '@strapi/strapi';
 import itemService from './item';
 
 export default {
   item: itemService,
 };
 
-// Type augmentation for strapi.service()
-declare module '@strapi/strapi' {
-  interface Services {
-    'plugin::my-plugin.item': ReturnType<typeof itemService>;
-  }
-}
+// server/src/utils/get-service.ts
+// strapi.service()/strapi.plugin().service() are typed as the generic `Core.Service`,
+// and module augmentation does not change that. Wrap the lookup in a typed helper.
+import type { Core } from '@strapi/strapi';
+import type services from '../services';
+
+type Services = typeof services;
+
+export const getService = <K extends keyof Services>(
+  strapi: Core.Strapi,
+  name: K
+): ReturnType<Services[K]> => strapi.plugin('my-plugin').service(name) as ReturnType<Services[K]>;
+
+// usage: getService(strapi, 'item').findPublished()
 ```
 
 ### Typed Content-Types
@@ -447,24 +505,24 @@ export interface PluginMyPluginItem extends Struct.CollectionTypeSchema {
 
 ## Cron Jobs
 
+A plugin can't ship the host app's `config/cron-tasks`. Register jobs with `strapi.cron.add()` in `bootstrap` and remove them in `destroy`. Jobs only run when the host app has `cron: { enabled: true }` in `config/server`.
+
 ```typescript
-// server/src/config/index.ts
-export default {
-  default: {},
-  validator: () => {},
+// server/src/bootstrap.ts
+export default ({ strapi }: { strapi: Core.Strapi }) => {
+  strapi.cron.add({
+    'my-plugin-sync': {
+      task: async ({ strapi }) => {
+        await strapi.plugin('my-plugin').service('sync').run();
+      },
+      options: { rule: '*/5 * * * *' }, // every 5 minutes
+    },
+  });
 };
 
-// config/cron-tasks.ts (in main Strapi app)
-export default {
-  '*/5 * * * *': async ({ strapi }) => {
-    // Run every 5 minutes
-    await strapi.service('plugin::my-plugin.sync').run();
-  },
-
-  '0 0 * * *': async ({ strapi }) => {
-    // Run daily at midnight
-    await strapi.service('plugin::my-plugin.cleanup').oldDrafts();
-  },
+// server/src/destroy.ts
+export default ({ strapi }: { strapi: Core.Strapi }) => {
+  strapi.cron.remove('my-plugin-sync');
 };
 ```
 
@@ -509,6 +567,8 @@ export default webhookService;
 ## React Query Pattern (plugin-todo)
 
 The recommended approach for admin panel data fetching using `@tanstack/react-query`.
+
+> Strapi's admin does **not** provide a TanStack `QueryClient` (it uses react-query v3 internally). Add `@tanstack/react-query` to your plugin's dependencies and wrap **every** tree you render — each plugin page and each component injected into the Content Manager — in your own `QueryClientProvider`. Without it, `useQuery` throws "No QueryClient set".
 
 ### Query Client Setup
 
@@ -608,7 +668,7 @@ export const TaskList = () => {
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFetchClient, unstable_useContentManagerContext } from '@strapi/strapi/admin';
-import { Dialog, TextInput, Button } from '@strapi/design-system';
+import { Dialog, Field, TextInput, Button } from '@strapi/design-system';
 
 interface Props {
   open: boolean;
@@ -641,11 +701,13 @@ export const TodoModal = ({ open, setOpen }: Props) => {
       <Dialog.Content>
         <Dialog.Header>Add Task</Dialog.Header>
         <Dialog.Body>
-          <TextInput
-            label="Task name"
-            value={taskName}
-            onChange={(e) => setTaskName(e.target.value)}
-          />
+          <Field.Root name="taskName">
+            <Field.Label>Task name</Field.Label>
+            <TextInput
+              value={taskName}
+              onChange={(e) => setTaskName(e.target.value)}
+            />
+          </Field.Root>
         </Dialog.Body>
         <Dialog.Footer>
           <Dialog.Cancel>
@@ -691,6 +753,9 @@ export default {
 | `editView.informations` | Information panel in edit view |
 | `listView.actions` | Actions area in list view |
 | `listView.deleteModalAdditionalInfos` | Additional info in delete modal |
+| `listView.publishModalAdditionalInfos` | Additional info in bulk publish modal |
+| `listView.unpublishModalAdditionalInfos` | Additional info in bulk unpublish modal |
+| `preview.actions` | Actions in the preview view header |
 
 ### Using Content Manager Context
 
@@ -737,14 +802,14 @@ import { factories } from '@strapi/strapi';
 
 export default factories.createCoreService('plugin::todo.task', ({ strapi }) => ({
   async findRelatedTasks(relatedId: string, relatedType: string) {
-    // Query the junction table directly
+    // Query the junction table directly. `strapi.db.query()` takes a model UID,
+    // not a table name — use the knex connection for raw tables.
     const relatedTasks = await strapi.db
-      .query('tasks_related_mph')
-      .findMany({
-        where: {
-          related_id: relatedId,
-          related_type: relatedType,
-        },
+      .connection('tasks_related_mph')
+      .select('task_id')
+      .where({
+        related_id: relatedId,
+        related_type: relatedType,
       });
 
     const taskIds = relatedTasks.map((t) => t.task_id);
@@ -794,9 +859,9 @@ export default factories.createCoreService('plugin::my-plugin.item', ({ strapi }
     });
   },
 
-  // Override core method
-  async findOne(documentId: string) {
-    const item = await super.findOne(documentId);
+  // Override core method — keep the (documentId, params) signature
+  async findOne(documentId: string, params = {}) {
+    const item = await super.findOne(documentId, params);
     // Add custom logic
     return { ...item, customField: 'value' };
   },
@@ -1241,6 +1306,24 @@ if (!canList) return null;
 </Page.Protect>
 ```
 
+### Registering Admin Permissions (server side)
+
+The `plugin::my-plugin.*` actions used by `useRBAC` / `Page.Protect` / `admin::hasPermissions` must be registered on the server, in `bootstrap`, or they don't exist (and don't appear in Settings → Roles):
+
+```typescript
+// server/src/bootstrap.ts
+import type { Core } from '@strapi/strapi';
+
+export default ({ strapi }: { strapi: Core.Strapi }) => {
+  strapi.admin.services.permission.actionProvider.registerMany([
+    { section: 'plugins', displayName: 'Read settings', uid: 'settings.list', pluginName: 'my-plugin' },
+    { section: 'plugins', displayName: 'Manage patterns', uid: 'settings.patterns', pluginName: 'my-plugin' },
+    { section: 'plugins', displayName: 'Edit view sidebar', uid: 'edit-view.sidebar', pluginName: 'my-plugin' },
+  ]);
+};
+// → actions `plugin::my-plugin.settings.list`, etc.
+```
+
 ### Notifications
 
 ```tsx
@@ -1274,12 +1357,15 @@ For modern Strapi v5 plugins, use React Hook Form with Zod for type-safe form va
 ```json
 {
   "dependencies": {
-    "@hookform/resolvers": "^3.9.0",
+    "@hookform/resolvers": "^5.0.0",
+    "@tanstack/react-query": "^5.62.0",
     "react-hook-form": "^7.54.0",
-    "zod": "^3.24.0"
+    "zod": "^4.0.0"
   }
 }
 ```
+
+> With Zod 4 + `@hookform/resolvers` 5, a schema whose input and output types differ (e.g. `z.coerce.number()`) needs both generics: `useForm<z.input<typeof schema>, unknown, z.output<typeof schema>>({ resolver: zodResolver(schema) })`.
 
 ### Basic Settings Form
 
@@ -1288,7 +1374,9 @@ For modern Strapi v5 plugins, use React Hook Form with Zod for type-safe form va
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient,
+} from '@tanstack/react-query';
 import { useFetchClient, useNotification, Layouts, Page } from '@strapi/strapi/admin';
 import {
   Main, Box, Button, Flex, Field, TextInput, Checkbox,
@@ -1304,9 +1392,19 @@ const settingsSchema = z.object({
   syncInterval: z.coerce.number().min(1).max(1440),
 });
 
-type SettingsFormValues = z.infer<typeof settingsSchema>;
+type SettingsFormInput = z.input<typeof settingsSchema>;
+type SettingsFormValues = z.output<typeof settingsSchema>;
 
-const SettingsPage = () => {
+// Strapi doesn't provide a TanStack QueryClient — the page owns one
+const queryClient = new QueryClient();
+
+export const SettingsPage = () => (
+  <QueryClientProvider client={queryClient}>
+    <SettingsForm />
+  </QueryClientProvider>
+);
+
+const SettingsForm = () => {
   const { get, put } = useFetchClient();
   const { toggleNotification } = useNotification();
   const { formatMessage } = useIntl();
@@ -1324,7 +1422,7 @@ const SettingsPage = () => {
     reset,
     watch,
     setValue,
-  } = useForm<SettingsFormValues>({
+  } = useForm<SettingsFormInput, unknown, SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
     values: settings, // Syncs form with fetched data
   });
@@ -1549,6 +1647,7 @@ export const settingsSchema = z.object({
 
 ```tsx
 // admin/src/hooks/usePluginForm.ts
+// Uses TanStack hooks: callers must render under the plugin's own QueryClientProvider.
 import { useForm, UseFormProps } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -1750,6 +1849,110 @@ const { get, post, put, del } = getFetchClient();
 
 ---
 
+## Strapi 5 Admin & Server APIs
+
+Newer extension points (verify against your `@strapi/strapi` peer range).
+
+### Menu links, settings, homepage widgets
+
+```tsx
+// admin/src/index.ts
+import { PuzzlePiece, ChartPie } from '@strapi/icons';
+
+export default {
+  register(app: StrapiApp) {
+    app.addMenuLink({
+      to: `plugins/${PLUGIN_ID}`,
+      icon: PuzzlePiece,
+      intlLabel: { id: `${PLUGIN_ID}.plugin.name`, defaultMessage: 'My Plugin' },
+      Component: () => import('./pages/App'), // lazy loader is correct here
+      permissions: [],
+    });
+
+    // Settings section + link (createSettingSection / addSettingsLinks are deprecated aliases)
+    app.addSettingsLink(
+      { id: PLUGIN_ID, intlLabel: { id: `${PLUGIN_ID}.settings.section`, defaultMessage: 'My Plugin' } },
+      {
+        id: 'general',
+        to: PLUGIN_ID,
+        intlLabel: { id: `${PLUGIN_ID}.settings.general`, defaultMessage: 'General' },
+        Component: () => import('./pages/Settings'),
+        permissions: [],
+      }
+    );
+
+    // Homepage widget (Strapi 5.13+). `component` resolves to the component itself.
+    app.widgets.register({
+      id: 'stats',
+      pluginId: PLUGIN_ID,
+      icon: ChartPie,
+      title: { id: `${PLUGIN_ID}.widget.stats`, defaultMessage: 'My Plugin stats' },
+      component: async () => (await import('./components/StatsWidget')).StatsWidget,
+      permissions: [{ action: 'plugin::my-plugin.settings.list' }],
+    });
+
+    app.registerPlugin({ id: PLUGIN_ID, name: PLUGIN_ID });
+  },
+};
+```
+
+### Content Manager APIs
+
+```tsx
+// admin/src/index.ts
+import type { DocumentActionComponent } from '@strapi/content-manager/strapi-admin';
+
+const ExportAction: DocumentActionComponent = ({ model, documentId }) => ({
+  label: 'Export',
+  onClick: () => exportDocument(model, documentId),
+  position: 'panel', // 'panel' | 'header' | 'table-row'
+});
+
+export default {
+  bootstrap(app: StrapiApp) {
+    const cm = app.getPlugin('content-manager');
+    // @ts-expect-error — `apis` is typed as Record<string, unknown>
+    cm.apis.addDocumentAction((actions) => [...actions, ExportAction]);
+    // Also: apis.addEditViewSidePanel, apis.addDocumentHeaderAction, apis.addBulkAction
+  },
+};
+```
+
+### Route request/response schemas & strict params
+
+Routes can declare Zod (v4) schemas; Strapi validates with them and uses them for OpenAPI generation. Apps that enable `rest.strictParams` (or `documents.strictParams`) in `config/api` reject undeclared query/body params with 400 — so declare yours.
+
+```typescript
+// server/src/routes/content-api/index.ts
+import { z } from '@strapi/utils'; // Strapi's own Zod v4 instance
+
+export default {
+  type: 'content-api',
+  routes: [
+    {
+      method: 'GET',
+      path: '/items',
+      handler: 'item.findMany',
+      request: {
+        query: { page: z.coerce.number().int().min(1).optional() },
+      },
+      response: z.object({ data: z.array(z.object({ documentId: z.string() })) }),
+    },
+  ],
+};
+
+// server/src/register.ts — extend core Content API routes with a param
+strapi.contentAPI.addQueryParams({
+  includeStats: { schema: (z) => z.boolean().optional() },
+});
+```
+
+### MCP tools
+
+`strapi.ai.mcp.registerTool()` / `registerPrompt()` / `registerResource()` expose plugin capabilities to Strapi's MCP server. Call them **only in `register()`** (the MCP server starts during bootstrap). Check `strapi.ai.mcp.isEnabled()` and the `Modules.MCP` types in `@strapi/types` for the tool definition shape.
+
+---
+
 ## Content Type Builder Integration
 
 Extend the Content Type Builder to add plugin-specific options to content types.
@@ -1822,8 +2025,11 @@ export default {
 import { unstable_useContentManagerContext } from '@strapi/strapi/admin';
 import type { PanelComponent } from '@strapi/content-manager/strapi-admin';
 
-const MyPanel: PanelComponent = () => {
-  const { contentType, model, id } = unstable_useContentManagerContext();
+// Panels receive the edit-view context as props:
+// { activeTab, collectionType, document, documentId, meta, model }
+const MyPanel: PanelComponent = ({ model, documentId }) => {
+  // The schema (pluginOptions) isn't in the props — read it from the CM context
+  const { contentType } = unstable_useContentManagerContext();
 
   // Check if the plugin is enabled for this content type
   if (!contentType?.pluginOptions?.['my-plugin']?.enabled) return null;
@@ -1930,33 +2136,53 @@ double-loop TDD and property-based tests. Load it before writing or reviewing te
     "name": "my-plugin",
     "displayName": "My Plugin"
   },
+  "type": "commonjs",
+  "files": ["dist"],
   "exports": {
+    "./package.json": "./package.json",
     "./strapi-admin": {
+      "types": "./dist/admin/src/index.d.ts",
       "source": "./admin/src/index.ts",
       "import": "./dist/admin/index.mjs",
-      "require": "./dist/admin/index.js"
+      "require": "./dist/admin/index.js",
+      "default": "./dist/admin/index.js"
     },
     "./strapi-server": {
+      "types": "./dist/server/src/index.d.ts",
       "source": "./server/src/index.ts",
       "import": "./dist/server/index.mjs",
-      "require": "./dist/server/index.js"
+      "require": "./dist/server/index.js",
+      "default": "./dist/server/index.js"
     }
   },
+  "scripts": {
+    "build": "strapi-plugin build",
+    "watch": "strapi-plugin watch",
+    "watch:link": "strapi-plugin watch:link",
+    "verify": "strapi-plugin verify"
+  },
   "dependencies": {
-    "@hookform/resolvers": "^3.9.0",
-    "@strapi/design-system": "^2.0.0-rc.14",
-    "@strapi/icons": "^2.0.0-rc.14",
+    "@hookform/resolvers": "^5.0.0",
     "@tanstack/react-query": "^5.62.0",
     "react-hook-form": "^7.54.0",
-    "react-intl": "^7.1.0",
-    "zod": "^3.24.0"
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@strapi/sdk-plugin": "^6.0.0",
+    "@strapi/strapi": "^5.0.0"
   },
   "peerDependencies": {
+    "@strapi/design-system": "^2.0.0",
+    "@strapi/icons": "^2.0.0",
+    "@strapi/sdk-plugin": "^6.0.0",
     "@strapi/strapi": "^5.0.0",
-    "react": "^17.0.0 || ^18.0.0",
-    "react-dom": "^17.0.0 || ^18.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-intl": "^6.0.0",
     "react-router-dom": "^6.0.0",
     "styled-components": "^6.0.0"
   }
 }
 ```
+
+This mirrors what `npx @strapi/sdk-plugin@latest init` (v6) generates. `react-intl` stays a `^6` **peer** so the plugin shares Strapi's `IntlProvider`; DS/icons are peers so the plugin uses the admin's copy. Bump the `@strapi/strapi` peer (e.g. `^5.13.0`) when you rely on newer APIs such as homepage widgets.
