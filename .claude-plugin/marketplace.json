@@ -1,0 +1,31 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/gh/anthropics/claude-code@main/packages/plugin-marketplace/marketplace.schema.json",
+  "name": "strapi-skills",
+  "description": "Strapi v5 skills for Claude Code: plugin development, admin UI, and testing.",
+  "owner": {
+    "name": "Ayoub Hidri",
+    "url": "https://github.com/ayhid"
+  },
+  "plugins": [
+    {
+      "name": "strapi-skills",
+      "source": "./",
+      "description": "Strapi v5 plugin bundle: plugin development, admin UI with Design System v2, and testing at the right level. Three skills, two reviewer agents, slash commands and edit-time checks.",
+      "version": "1.0.0",
+      "category": "backend",
+      "tags": [
+        "strapi",
+        "plugin",
+        "testing",
+        "design-system",
+        "cms",
+        "typescript"
+      ],
+      "author": {
+        "name": "Ayoub Hidri"
+      },
+      "repository": "https://github.com/ayhid/strapi-plugin-testing",
+      "license": "MIT"
+    }
+  ]
+}

@@ -158,7 +158,8 @@ What integration must prove, against real Strapi:
 ## 9. The fixture app
 
 A minimal Strapi v5 app that exists only to host the plugin under test. It's part of the
-plugin, versioned with it, and reviewed like code.
+plugin, versioned with it, and reviewed like code. In plugin monorepos it is often called
+`playground` (e.g. `apps/playground`); that app is the fixture app — don't create a second one.
 
 - **Minimal**: only the content types the plugin needs to be exercised (e.g. one fake
   `page` type with `title`, `slug`, i18n and draft & publish), plus one unrelated type to

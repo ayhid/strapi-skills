@@ -1,8 +1,42 @@
-# strapi-plugin-testing
+# strapi-skills
 
-An agent skill that makes coding agents test **Strapi v5 plugins** at the right level:
-fast and isolated where the logic lives, against a real Strapi where the framework is
-involved. It adapts the [Practical Test Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)
+A Claude Code plugin bundle for building **Strapi v5 plugins** with agents: how to write
+the plugin, how to build its admin UI, and how to test it at the right level.
+
+| Skill | What it does |
+|---|---|
+| `strapi-plugin-dev` | Plugin development: Document Service API, factory patterns, routes and RBAC, admin extensions, RHF + Zod, TanStack Query v5 |
+| `strapi-ui-design` | Admin UI with Design System v2: layouts, tables, forms, modals, accessibility, a source-derived catalog of 46 components |
+| `strapi-plugin-testing` | Testing at the right level: unit for logic, real Strapi for data behaviour, contracts for consumers |
+
+The bundle also ships:
+
+- **Agents**: `strapi-reviewer` (v5 conformance of `server/src` and `admin/src`) and
+  `strapi-ui-reviewer` (Design System v2 conformance).
+- **Commands**: `/strapi-skills:scaffold-plugin`, `add-content-type`, `add-cm-panel`,
+  `verify`, `ui-component`, `ui-audit`.
+- **Hooks**: after each edit, checks for v5 server anti-patterns, invalid content-type
+  schemas and Design System violations in `admin/src/**/*.tsx`, plus Strapi context
+  injected into prompts.
+
+## Install
+
+In Claude Code:
+
+```
+/plugin marketplace add ayhid/strapi-plugin-testing
+/plugin install strapi-skills@strapi-skills
+```
+
+The rest of this page covers the newest skill, `strapi-plugin-testing`.
+
+---
+
+## strapi-plugin-testing
+
+Makes coding agents test Strapi v5 plugins at the right level: fast and isolated where the
+logic lives, against a real Strapi where the framework is involved. It adapts the
+[Practical Test Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)
 to plugins built by agents.
 
 > **Put logic where it can be tested without Strapi, test your use of Strapi against a
@@ -109,38 +143,35 @@ flowchart LR
     O2 --> X["Delete tests that now duplicate another layer"]
 ```
 
-## What's in the skill
+## Repository layout
 
 ```
-strapi-plugin-testing/
-├── SKILL.md                          # core: three questions, design rules, workflow, rules package
-├── references/
-│   ├── layers-and-mocking.md         # what each layer owns, where mocks lie, shared fake Strapi, ports
-│   ├── plugin-specifics.md           # register, bootstrap, config, routes, hooks, fixture app, harness
-│   ├── double-loop-tdd.md            # outer/inner loops, test-first vs test-with
-│   ├── property-based-testing.md     # good invariants, stateful pattern, traps
-│   ├── review-checklist.md           # judgment rules for reviewing agent output
-│   └── planning-template.md          # each behaviour declares its layer and proving test
-└── evals/                            # test prompts and input fixtures used to validate the skill
+.claude-plugin/
+├── plugin.json                       # the strapi-skills plugin
+└── marketplace.json                  # lets this repo be added as a marketplace
+skills/
+├── strapi-plugin-dev/                # SKILL.md, patterns.md, examples.md
+├── strapi-ui-design/                 # SKILL.md, patterns.md, examples.md, component-catalog.md
+└── strapi-plugin-testing/
+    ├── SKILL.md                      # core: three questions, design rules, workflow, rules package
+    └── references/
+        ├── layers-and-mocking.md     # what each layer owns, where mocks lie, shared fake Strapi, ports
+        ├── plugin-specifics.md       # register, bootstrap, config, routes, hooks, fixture app, harness
+        ├── double-loop-tdd.md        # outer/inner loops, test-first vs test-with
+        ├── property-based-testing.md # good invariants, stateful pattern, traps
+        ├── review-checklist.md       # judgment rules for reviewing agent output
+        └── planning-template.md      # each behaviour declares its layer and proving test
+agents/                               # strapi-reviewer, strapi-ui-reviewer
+commands/                             # scaffold-plugin, add-content-type, add-cm-panel, verify, ui-component, ui-audit
+hooks/hooks.json                      # edit-time checks and context injection
+scripts/                              # the hook scripts
+evals/strapi-plugin-testing/          # test prompts and input fixtures used to validate the testing skill
 ```
 
-`SKILL.md` stays short and loads every time. The agent opens a reference file only when
-the task needs it.
-
-## Install
-
-Claude Code, for all projects:
-
-```bash
-git clone https://github.com/ayhid/strapi-plugin-testing.git
-cp -r strapi-plugin-testing/strapi-plugin-testing ~/.claude/skills/
-```
-
-Or for a single project, copy the folder to `<project>/.claude/skills/`. The guidance is
-agent-agnostic markdown, so other agents can load `SKILL.md` and its references the same way.
-
-The skill loads when an agent plans, implements, tests or reviews anything inside a
-Strapi plugin, and stays out of Strapi content-modelling questions and frontend-only work.
+Each `SKILL.md` stays short and loads when its description matches the task. The agent
+opens reference files only when the task needs them. The testing skill triggers on
+planning, implementing, testing or reviewing plugin code, and stays out of Strapi
+content-modelling questions and frontend-only work.
 
 ## Early results
 

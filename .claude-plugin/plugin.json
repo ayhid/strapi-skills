@@ -1,0 +1,14 @@
+{
+  "name": "strapi-skills",
+  "version": "1.0.0",
+  "description": "Strapi v5 plugin bundle: plugin development (Document Service API, factory patterns, RHF+Zod, TanStack Query v5), admin UI with Design System v2, and testing at the right level (unit for logic, real Strapi for data behaviour, contracts for consumers). Ships three skills, two reviewer agents, slash commands and edit-time checks.",
+  "author": {
+    "name": "Ayoub Hidri",
+    "email": "ayoub.hidri@gmail.com",
+    "url": "https://www.linkedin.com/in/ayoub-hidri-67a29428/"
+  },
+  "homepage": "https://github.com/ayhid/strapi-plugin-testing",
+  "repository": "https://github.com/ayhid/strapi-plugin-testing",
+  "license": "MIT",
+  "keywords": ["strapi", "strapi-v5", "plugin", "testing", "design-system", "cms"]
+}
